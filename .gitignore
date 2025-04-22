@@ -1,0 +1,5 @@
+# Bỏ qua file test.py
+test.py
+
+# Bỏ qua toàn bộ folder result và mọi nội dung bên trong
+result/
