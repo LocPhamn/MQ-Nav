@@ -217,8 +217,8 @@ for ep in range(ep_num):
             conflict_num += conflict
             temp_rewardSum += min(ep_reward)
             if mode == 'train':
-                ep_list.append(episode)
-                reward_list.append(np.around(min(ep_reward), decimals=3))
+                # ep_list.append(episode)
+                # reward_list.append(np.around(min(ep_reward), decimals=3))
                 print(f'Ep: {episode}, R: {np.around(min(ep_reward), decimals=3)}')
             if success == 0:
                 ep_timeCost = MAX_EP_STEPS
