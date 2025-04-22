@@ -67,8 +67,8 @@ success_num = 0
 successNum_list = []
 conflict_num = 0
 timeStart = time.time()
-ep_list = []
-reward_list = []
+# ep_list = []
+# reward_list = []
 
 for ep in range(ep_num):
     episode += 1
@@ -226,11 +226,6 @@ for ep in range(ep_num):
             break
     if mode == 'train':
         if episode % 100 == 0:
-            df = pd.DataFrame({
-                'Episode': ep_list,
-                'Reward': reward_list
-            })
-            df.to_csv(path + 'reward_log.csv', index=False, encoding='utf-8-sig')
             print(" ~~~~~~~  Statistics ~~~~~~~~  Ep ", episode)
             print(f"Success: {success_num}, Collision: {collision_num}")
             mean_reward = temp_rewardSum / 100
