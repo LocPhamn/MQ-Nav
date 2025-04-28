@@ -16,7 +16,7 @@ parser.add_argument("--load_path", type=str, default='./result')
 args = parser.parse_args()
 mode = args.mode
 if mode == 'train':
-    ep_num = 10000
+    ep_num = 1000
     np.random.seed(1)
 else:
     ep_num = 1000
@@ -31,8 +31,8 @@ MAX_EP_STEPS = envSize * 3
 envSize_ = envSize - 0.99
 historyStep = env.historyStep
 s_dim_dqn = env.n_states_ts
-s_dim_ddpg = env.n_states_ca + 2   
-s_dim = s_dim_dqn + env.n_states_ca  
+s_dim_ddpg = env.n_states_ca + 2
+s_dim = s_dim_dqn + env.n_states_ca
 n_actions = env.n_actions_ts
 a_dim = env.n_actions_ca
 a_bound = env.max_torque
@@ -67,8 +67,8 @@ success_num = 0
 successNum_list = []
 conflict_num = 0
 timeStart = time.time()
-# ep_list = []
-# reward_list = []
+ep_list = []
+reward_list = []
 
 for ep in range(ep_num):
     episode += 1
@@ -162,8 +162,8 @@ for ep in range(ep_num):
 
             # if RL.pointer_ddpg > RL.MEMORY_SIZE_ddpg and sum(agentExistObstacle_Target):
             #     RL.learn_ddpg()
-            if len(RL_DQN.replay_buffer) > 64:  # bạn có thể điều chỉnh batch size nếu muốn
-                RL_DQN.train_main_network(batch_size=64)
+            if len(RL_DQN.replay_buffer) > 32:  # bạn có thể điều chỉnh batch size nếu muốn
+                RL_DQN.train_main_network(batch_size=32)
 
             # print(f'ts: {action}, angle: {np.around(action_ddpg, decimals=2)}')
         ep_timeCost += 1
@@ -217,15 +217,20 @@ for ep in range(ep_num):
             conflict_num += conflict
             temp_rewardSum += min(ep_reward)
             if mode == 'train':
-                # ep_list.append(episode)
-                # reward_list.append(np.around(min(ep_reward), decimals=3))
                 print(f'Ep: {episode}, R: {np.around(min(ep_reward), decimals=3)}')
+                ep_list.append(episode)
+                reward_list.append(min(ep_reward))
             if success == 0:
                 ep_timeCost = MAX_EP_STEPS
             timeCostSum_temp += ep_timeCost
             break
     if mode == 'train':
         if episode % 100 == 0:
+            reward_df = pd.DataFrame({
+                'Episode': ep_list,
+                'Reward': reward_list
+            })
+            reward_df.to_csv(os.path.join(path, 'reward_log.csv'), index=False)
             print(" ~~~~~~~  Statistics ~~~~~~~~  Ep ", episode)
             print(f"Success: {success_num}, Collision: {collision_num}")
             mean_reward = temp_rewardSum / 100
