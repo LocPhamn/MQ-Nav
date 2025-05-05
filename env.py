@@ -30,7 +30,7 @@ class ENV(tk.Tk, object):
         self.observeTimes = 400
         self.agent_all = [None] * self.agentNum
         self.target_all = [None] * self.agentNum
-        self.obstacle_all = [None] * obsNum
+        self.obstacle_all = [None] * (obsNum + 4)
         self.agentSize = 0.25*UNIT
         self.tarSize = 0.25*UNIT
         self.obsSize = np.ones(obsNum)
@@ -81,6 +81,12 @@ class ENV(tk.Tk, object):
                 self.obs_center[i, 0] - self.obsSize[i], self.obs_center[i, 1] - self.obsSize[i],
                 self.obs_center[i, 0] + self.obsSize[i], self.obs_center[i, 1] + self.obsSize[i],
                 fill='grey')
+
+        self.obstacle_all[obsNum] = self.canvas.create_rectangle(0, 0, 0 + UNIT, ENV_H * UNIT, fill="yellow",outline="black")
+        self.obstacle_all[obsNum + 1] = self.canvas.create_rectangle(0, ENV_H * UNIT, ENV_H * UNIT, ENV_H * UNIT - UNIT,fill="yellow", outline="black")
+        self.obstacle_all[obsNum + 2] = self.canvas.create_rectangle(ENV_H * UNIT - UNIT, ENV_H * UNIT, ENV_H * UNIT, 0,fill="yellow", outline="black")
+        self.obstacle_all[obsNum + 3] = self.canvas.create_rectangle(ENV_H * UNIT, 0 + UNIT, 0, 0, fill="yellow",outline="black")
+
         self.canvas.pack()
 
 
@@ -128,6 +134,12 @@ class ENV(tk.Tk, object):
                 self.obs_center[i, 0] - self.obsSize[i], self.obs_center[i, 1] - self.obsSize[i],
                 self.obs_center[i, 0] + self.obsSize[i], self.obs_center[i, 1] + self.obsSize[i],
                 fill='lightgrey', outline='lightgrey')
+
+        self.obstacle_all[obsNum]= self.canvas.create_rectangle(0, 0, 0 + UNIT, ENV_H * UNIT, fill="yellow", outline="black")
+        self.obstacle_all[obsNum+1] = self.canvas.create_rectangle(0, ENV_H * UNIT, ENV_H * UNIT, ENV_H * UNIT - UNIT, fill="yellow",outline="black")
+        self.obstacle_all[obsNum+2] = self.canvas.create_rectangle(ENV_H * UNIT - UNIT, ENV_H * UNIT, ENV_H * UNIT, 0, fill="yellow",outline="black")
+        self.obstacle_all[obsNum+3] = self.canvas.create_rectangle(ENV_H * UNIT, 0 + UNIT, 0, 0, fill="yellow",outline="black")
+
         for i in range(self.agentNum):
             tar_coordi[i] = np.array(self.canvas.coords(self.target_all[i])[:2]) + np.array([self.tarSize, self.tarSize])
             agent_coordi[i] = np.array(self.canvas.coords(self.agent_all[i])[:2]) + np.array([self.agentSize, self.agentSize])
@@ -149,8 +161,8 @@ class ENV(tk.Tk, object):
             observeDistance = k / self.observeTimes * self.observeRange
             observeCoordi = observeDistance * tarAgentDirCoordi
             A_coordi = self.canvas.coords(self.agent_all[i]) + UNIT * np.hstack((np.hstack(observeCoordi), np.hstack(observeCoordi)))
-            for j in range(0, obsNum+1):
-                if j < int(obsNum/2):  # Detecting square obstacles
+            for j in range(0, obsNum+5):
+                if j < int(obsNum/2) or j in range(obsNum,obsNum+4):  # Detecting square obstacles
                     Ob_coordi = self.canvas.coords(self.obstacle_all[j])
                     agentNonObstacle = A_coordi[2] <= Ob_coordi[0] or A_coordi[0] >= Ob_coordi[2] or A_coordi[3] <= Ob_coordi[1] or A_coordi[1] >= Ob_coordi[3]
                     if agentNonObstacle == 0:
@@ -312,7 +324,7 @@ class ENV(tk.Tk, object):
             self.new_cell_point[i].append(new_cell_reward)
 
             founded_targets_move, check = self.mark_target(self.grid_map, self.observeRange, UNIT)
-            if check == 1: # check what agent find the target
+            if check == 1:                                                                                              # check what agent find the target
                 # print("founded targets: {}".format(self.founded_targets))
                 search_agents[i] = 1
             # if len(founded_targets) == self.agentNum:
@@ -354,8 +366,8 @@ class ENV(tk.Tk, object):
         # Check collisions
         for i in range(self.agentNum):
             A_coordi = self.canvas.coords(self.agent_all[i])
-            for j in range(0, obsNum+1):
-                if j < int(obsNum/2):  # Square obs
+            for j in range(0, obsNum+5):
+                if j < int(obsNum/2) or j in range(obsNum,obsNum+4):  # Square obs
                     Ob_coordi = self.canvas.coords(self.obstacle_all[j])
                     nextAoutOb = A_coordi[2] <= Ob_coordi[0] or A_coordi[0] >= Ob_coordi[2] or A_coordi[3] <= Ob_coordi[1] or A_coordi[1] >= Ob_coordi[3]
                     if nextAoutOb == 0:
@@ -397,7 +409,7 @@ class ENV(tk.Tk, object):
 
         self.historyStep +=1
 
-        # for i in range(self.agentNum):                                                                                  # check reward component
+        # for i in range(self.agentNum):                                                                                # check reward component
         #     if search_agents[i] == 1:
         #         print("reward[{}]: {} = {} + {} + {}".format(i,reward[i],t,100/self.agentNum,sum(self.new_cell_point[i])))
         #     else:
