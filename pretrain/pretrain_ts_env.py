@@ -1,178 +1,350 @@
+"""
+Multi-Agent Deep Q-Network Environment for Area Exploration
+
+This module implements a custom environment for multiple agents exploring an unknown area.
+The environment is built using Tkinter for visualization and provides:
+- A grid-based world where multiple agents can move and explore
+- Detection range mechanics for each agent
+- Reward system based on exploration progress and agent cooperation
+- Visualization of explored areas and agent movements
+
+Key Parameters:
+    ENV_H: Environment height (grid cells)
+    ENV_W: Environment width (grid cells)
+    UNIT: Size of each grid cell in pixels
+    MAX_EP_STEPS: Maximum steps per episode
+    DETECTION_RANGE: Manhattan distance for agent detection
+    OVERLAP_PENALTY: Penalty factor for overlapping detection ranges
+"""
+
 import numpy as np
 import sys
 if sys.version_info.major == 2:
     import Tkinter as tk
 else:
     import tkinter as tk
+import time
 
-ENV_H = 15  # env height
-ENV_W = ENV_H  # env width
-UNIT = 20  # grid size
+# Environment configuration constants
+ENV_H = 15  # env height in grid cells
+ENV_W = ENV_H  # env width in grid cells
+UNIT = 20  # pixel size of each grid cell
 HalfUnit = UNIT / 2
-MAX_EP_STEPS = ENV_H * 2
+MAX_EP_STEPS = ENV_H * 2  # Maximum steps allowed per episode
+DETECTION_RANGE = 2  # Manhattan distance for detection range
+OVERLAP_PENALTY = 0.2  # Penalty factor for overlapping detection ranges
 
 class ENV(tk.Tk, object):
+    """
+    Multi-agent exploration environment class.
+    
+    This class creates and manages the environment where agents explore an unknown area.
+    It handles agent movements, exploration tracking, and reward calculations.
+    """
+    
     def __init__(self, agentNum):
+        """
+        Initialize the environment with specified number of agents.
+        
+        Args:
+            agentNum: Number of agents in the environment
+        """
         super(ENV, self).__init__()
         self.ENV_H = ENV_H
         self.agentNum = agentNum
-        self.n_actions = self.agentNum
+        self.n_actions = 4  # up, down, left, right
         self.historyStep = 1
-        self.n_features = 2 * (2 * self.agentNum - 1) + 2*(self.agentNum-1)*self.historyStep*2
+        self.n_features = 2 + ENV_H * ENV_W  # agent position + explored map
         self.agent_all = [None] * self.agentNum
-        self.target_all = [None] * self.agentNum
-        self.agentSize = 0.25 * UNIT  
-        self.tarSize = 0.5 * UNIT  
+        self.explored_cells = []  # Store explored cell rectangles
+        self.agentSize = 0.25 * UNIT
         self.agent_center = np.zeros((self.agentNum, 2))
-        self.tar_center = np.zeros((self.agentNum, 2))
+        self.explored_map = np.zeros((ENV_H, ENV_W))  # 0: unexplored, 1: explored
         self.geometry('{0}x{1}'.format(ENV_H * UNIT, ENV_H * UNIT))
         self._build_env()
 
     def _build_env(self):
+        """
+        Build and initialize the environment visualization.
+        Creates the canvas, grid lines, walls, and randomly places agents.
+        """
         self.canvas = tk.Canvas(self, bg='white',
-                                height=ENV_H * UNIT,
-                                width=ENV_W * UNIT)
+                              height=ENV_H * UNIT,
+                              width=ENV_W * UNIT)
+        # Create grid
+        for i in range(ENV_H):
+            # Vertical lines
+            self.canvas.create_line(i * UNIT, 0, i * UNIT, ENV_H * UNIT, fill='lightgray')
+            # Horizontal lines
+            self.canvas.create_line(0, i * UNIT, ENV_W * UNIT, i * UNIT, fill='lightgray')
+            
+        # Create outer walls (thicker)
+        self.canvas.create_rectangle(0, 0, UNIT * ENV_W, UNIT * ENV_H, width=3)
+
+        # Initialize agents at random positions (away from walls)
         self.origin = np.array([HalfUnit, HalfUnit])
         for i in range(self.agentNum):
-            self.tar_center[i] = self.origin + UNIT * np.random.rand(2) * (ENV_H - 1 + 0.01)
-            self.agent_center[i] = self.origin + UNIT * np.random.rand(2) * (ENV_H - 1 + 0.01)
+            # Random position (1 to ENV_H-2 to avoid walls)
+            pos = np.random.randint(1, ENV_H-1, size=2)
+            self.agent_center[i] = self.origin + UNIT * pos
             self.agent_all[i] = self.canvas.create_oval(
-                self.agent_center[i, 0] - self.agentSize, self.agent_center[i, 1] - self.agentSize,
-                self.agent_center[i, 0] + self.agentSize, self.agent_center[i, 1] + self.agentSize,
-                fill='green')
-            self.target_all[i] = self.canvas.create_rectangle(
-                self.tar_center[i, 0] - self.tarSize, self.tar_center[i, 1] - self.tarSize,
-                self.tar_center[i, 0] + self.tarSize, self.tar_center[i, 1] + self.tarSize,
-                fill='orange')
+                self.agent_center[i, 0] - self.agentSize, 
+                self.agent_center[i, 1] - self.agentSize,
+                self.agent_center[i, 0] + self.agentSize, 
+                self.agent_center[i, 1] + self.agentSize,
+                fill='blue')
+        
         self.canvas.pack()
 
-    def reset(self, agentPositionArray, tarPositionArray):
+    def reset(self):
+        """
+        Reset the environment to initial state.
+        
+        Clears exploration history, resets agents to random positions,
+        and initializes tracking variables for the new episode.
+        
+        Returns:
+            numpy.ndarray: Initial state for each agent
+        """
         self.update()
-        sATAA = np.zeros((self.agentNum, 2 * (2 * self.agentNum - 1)))
-        agent_coordi = np.zeros((self.agentNum, 2))
-        tar_coordi = np.zeros((self.agentNum, 2))
+        self.explored_map = np.zeros((ENV_H, ENV_W))
+        self.current_step = 0  # Reset step counter
+        self.previous_explored_count = 0  # Track previous explored count
+        
+        # Clear previous explored cells
+        for cell in self.explored_cells:
+            self.canvas.delete(cell)
+        self.explored_cells = []
+        
+        # Reset agents to random positions
         for i in range(self.agentNum):
             self.canvas.delete(self.agent_all[i])
-            self.canvas.delete(self.target_all[i])  
-        self.agentPositionArray = agentPositionArray
-        self.tarPositionArray = tarPositionArray  
-        for i in range(self.agentNum):
-            self.tar_center[i] = self.origin + UNIT * self.tarPositionArray[i]
-            self.agent_center[i] = self.origin + UNIT * self.agentPositionArray[i]
-            self.target_all[i] = self.canvas.create_rectangle(
-                self.tar_center[i, 0] - self.tarSize, self.tar_center[i, 1] - self.tarSize,
-                self.tar_center[i, 0] + self.tarSize, self.tar_center[i, 1] + self.tarSize,
-                fill='red')
+            pos = np.random.randint(1, ENV_H-1, size=2)
+            self.agent_center[i] = self.origin + UNIT * pos
             self.agent_all[i] = self.canvas.create_oval(
-                self.agent_center[i, 0] - self.agentSize, self.agent_center[i, 1] - self.agentSize,
-                self.agent_center[i, 0] + self.agentSize, self.agent_center[i, 1] + self.agentSize,
+                self.agent_center[i, 0] - self.agentSize, 
+                self.agent_center[i, 1] - self.agentSize,
+                self.agent_center[i, 0] + self.agentSize, 
+                self.agent_center[i, 1] + self.agentSize,
                 fill='blue')
+            
+            # Mark initial explored areas
+            self._update_explored_area(i)
+        
+        # Store initial exploration count
+        self.previous_explored_count = np.sum(self.explored_map)
+        
+        # Calculate initial exploration ratio
+        exploration_ratio = np.sum(self.explored_map) / (ENV_H * ENV_W)
+        
+        # Show initial state
+        self.show_episode_info(0, exploration_ratio)
+            
+        # Create state for each agent
+        state = np.zeros((self.agentNum, self.n_features))
         for i in range(self.agentNum):
-            tar_coordi[i] = np.array(self.canvas.coords(self.target_all[i])[:2]) + np.array([self.tarSize, self.tarSize])
-            agent_coordi[i] = np.array(self.canvas.coords(self.agent_all[i])[:2]) + np.array([self.agentSize, self.agentSize])
+            state[i] = self._get_state(i)
+            
+        return state
+
+    def _get_state(self, agent_idx):
+        """
+        Get the current state for a specific agent.
+        
+        Args:
+            agent_idx: Index of the agent
+            
+        Returns:
+            numpy.ndarray: State vector containing agent position and explored map
+        """
+        # Get agent position and flattened explored map
+        pos = (self.agent_center[agent_idx] - self.origin) / UNIT
+        return np.concatenate([pos, self.explored_map.flatten()])
+
+    def _update_explored_area(self, agent_idx):
+        """
+        Update the explored area for a specific agent.
+        Marks cells within the agent's detection range as explored
+        and updates visualization.
+        
+        Args:
+            agent_idx: Index of the agent
+        """
+        pos = (self.agent_center[agent_idx] - self.origin) / UNIT
+        x, y = int(pos[0]), int(pos[1])
+        
+        # Update explored area within detection range (Manhattan distance)
+        for dx in range(-DETECTION_RANGE, DETECTION_RANGE + 1):
+            for dy in range(-DETECTION_RANGE + abs(dx), DETECTION_RANGE - abs(dx) + 1):
+                new_x, new_y = x + dx, y + dy
+                if 0 <= new_x < ENV_W and 0 <= new_y < ENV_H:
+                    if self.explored_map[new_y, new_x] == 0:  # If not already explored
+                        self.explored_map[new_y, new_x] = 1
+                        # Create visual representation of explored area
+                        cell = self.canvas.create_rectangle(
+                            new_x * UNIT, new_y * UNIT,
+                            (new_x + 1) * UNIT, (new_y + 1) * UNIT,
+                            fill='lightgreen', width=0)
+                        self.canvas.tag_lower(cell)  # Put explored area behind grid lines
+                        self.explored_cells.append(cell)
+
+    def _calculate_overlap_penalty(self):
+        """
+        Calculate penalties for overlapping detection ranges between agents.
+        Encourages agents to explore different areas.
+        
+        Returns:
+            numpy.ndarray: Array of overlap penalties for each agent
+        """
+        overlap_count = np.zeros(self.agentNum)
+        
+        # For each agent pair, check if their detection ranges overlap
         for i in range(self.agentNum):
-            for k in range(self.agentNum): 
-                sATAA[i, 2*k: 2*(k+1)] = (tar_coordi[k] - agent_coordi[i])/(ENV_H * UNIT)
-            for j in range(self.agentNum):
-                if j > i:
-                    sATAA[i, 2*(self.agentNum + j-1): 2*(self.agentNum + j)] = (agent_coordi[j] - agent_coordi[i])/(ENV_H * UNIT)
-                elif j < i:
-                    sATAA[i, 2*(self.agentNum + j): 2*(self.agentNum + j)+2] = - sATAA[j, 2*(self.agentNum + i-1): 2*(self.agentNum + i)]
-        return sATAA
+            pos_i = (self.agent_center[i] - self.origin) / UNIT
+            x_i, y_i = int(pos_i[0]), int(pos_i[1])
+            
+            # Get detection range cells for agent i
+            cells_i = set()
+            for dx in range(-DETECTION_RANGE, DETECTION_RANGE + 1):
+                for dy in range(-DETECTION_RANGE + abs(dx), DETECTION_RANGE - abs(dx) + 1):
+                    new_x, new_y = x_i + dx, y_i + dy
+                    if 0 <= new_x < ENV_W and 0 <= new_y < ENV_H:
+                        cells_i.add((new_x, new_y))
+            
+            # Compare with other agents
+            for j in range(i + 1, self.agentNum):
+                pos_j = (self.agent_center[j] - self.origin) / UNIT
+                x_j, y_j = int(pos_j[0]), int(pos_j[1])
+                
+                # Get detection range cells for agent j
+                cells_j = set()
+                for dx in range(-DETECTION_RANGE, DETECTION_RANGE + 1):
+                    for dy in range(-DETECTION_RANGE + abs(dx), DETECTION_RANGE - abs(dx) + 1):
+                        new_x, new_y = x_j + dx, y_j + dy
+                        if 0 <= new_x < ENV_W and 0 <= new_y < ENV_H:
+                            cells_j.add((new_x, new_y))
+                
+                # Calculate overlap
+                overlap = len(cells_i.intersection(cells_j))
+                if overlap > 0:
+                    overlap_count[i] += overlap
+                    overlap_count[j] += overlap
+        
+        return overlap_count
 
-    def step(self, action, observation, agentiDone):
-        base_actionA = np.array([0.0, 0.0])
-        if agentiDone != action+1:
-            base_actionA += observation[action*2:(action+1)*2] / np.linalg.norm(observation[action*2: (action+1)*2])*UNIT
-        return base_actionA[0], base_actionA[1]
-
-    def move(self, move, action):
-        collision = np.zeros(self.agentNum)
-        collision_true = 0
-        success = 0
-        conflict = 0
-        nextDisAA = np.zeros(int(self.agentNum*(self.agentNum-1)/2))
-        sATAA = np.zeros((self.agentNum, 2*(2*self.agentNum - 1)))  
-        agent_coordi = np.zeros((self.agentNum, 2))
-        tar_coordi = np.zeros((self.agentNum, 2))
-
-        reward = -1*np.ones(self.agentNum)/ENV_H
-        conflict_num = np.zeros(self.agentNum)
-
+    def step(self, actions):
+        """
+        Execute one time step in the environment.
+        
+        Args:
+            actions: Array of actions for each agent
+            
+        Returns:
+            tuple: (next_state, reward, done, exploration_ratio)
+                - next_state: New state after actions
+                - reward: Reward for each agent
+                - done: Whether episode is finished
+                - exploration_ratio: Current exploration progress
+        """
+        collision_with_wall = np.zeros(self.agentNum)
+        move = np.zeros((self.agentNum, 2))
+        
+        # Calculate moves for all agents
         for i in range(self.agentNum):
-            for k in range (self.agentNum):
-                if k != i and action[i] == action[k]:
-                    conflict_num[i] += 1
+            if actions[i] == 0:  # up
+                move[i] = [0, -UNIT]
+            elif actions[i] == 1:  # down
+                move[i] = [0, UNIT]
+            elif actions[i] == 2:  # left
+                move[i] = [-UNIT, 0]
+            else:  # right
+                move[i] = [UNIT, 0]
+                
+            # Check wall collision
+            new_pos = self.agent_center[i] + move[i]
+            grid_pos = (new_pos - self.origin) / UNIT
+            if (grid_pos[0] <= 0 or grid_pos[0] >= ENV_W-1 or 
+                grid_pos[1] <= 0 or grid_pos[1] >= ENV_H-1):
+                collision_with_wall[i] = 1
+                move[i] = [0, 0]  # Don't move if colliding with wall
 
-        # Agents move
+        # Move agents and update exploration
         for i in range(self.agentNum):
             self.canvas.move(self.agent_all[i], move[i, 0], move[i, 1])
+            if not collision_with_wall[i]:
+                self.agent_center[i] += move[i]
+            self._update_explored_area(i)
+            self.canvas.tag_raise(self.agent_all[i])  # Keep agents on top
 
-        # Agents' distances from targets and other agents
-        for i in range(self.agentNum):
-            tar_coordi[i] = np.array(self.canvas.coords(self.target_all[i])[:2]) + np.array([self.tarSize, self.tarSize])
-            agent_coordi[i] = np.array(self.canvas.coords(self.agent_all[i])[:2]) + np.array([self.agentSize, self.agentSize])
-        sortAgent_index = np.argsort(agent_coordi[:, 0])
-
-        nexDisAT = np.zeros((self.agentNum, self.agentNum))
-        agentDone = [int(val) for val in np.zeros(self.agentNum)]  # agent reaches which target
-        tarDone = [int(val) for val in np.zeros(self.agentNum)]    # indicates whether a target is reached
-        tarChosen = [int(val) for val in np.zeros(self.agentNum)]  # indicates whether a target is selected by an agent
-
-        for i in range(self.agentNum):
-            for j in range(self.agentNum):
-                if action[i] == j:
-                    tarChosen[j] = 1
-                nexDisAT[i, j] = np.linalg.norm(agent_coordi[i] - tar_coordi[j])
-                if nexDisAT[i, j] < UNIT and action[i] == j:
-                    agentDone[i] = j+1
-                    tarDone[j] = 1
-                    agent_coordi[i] = tar_coordi[j]
-
-        # Update observation
-        for i in range(self.agentNum):
-            for k in range(self.agentNum):  # distances between agents and targets
-                sATAA[i, 2 * k: 2 * (k + 1)] = (tar_coordi[k] - agent_coordi[i]) / (ENV_H * UNIT)
-            temp = 0
-            for j in range(self.agentNum):  # distances between agents
-                if sortAgent_index[j] != i:
-                    sATAA[i, 2 * (self.agentNum + temp): 2 * (self.agentNum + temp+1)] = (agent_coordi[sortAgent_index[j]] - agent_coordi[i]) / (ENV_H * UNIT)
-                    temp += 1
-
-        temp = 0
-        for i in range(self.agentNum):
-            for k in range(self.agentNum):
-                if k > i:
-                    nextDisAA[temp] = np.linalg.norm(agent_coordi[i] - agent_coordi [k])
-                    if nextDisAA[temp] < UNIT:
-                        collision[i], collision[k] = 1, 1
-                        if action[i] == action[k]:
-                            collision_true = 1
-                    temp += 1
-
-        for i in range(self.agentNum):
-            reward[i] += -30*conflict_num[i]/ENV_H
-            for j in range(self.agentNum):
-                if j > i:
-                    if agentDone[i] == agentDone[j] and agentDone[i] != 0:
-                        if action[i] == action[j]:
-                            conflict = 1
-                            reward[i] += -45/ENV_H
-                            reward[j] += -45/ENV_H
-                            break
-
-        if np.sum(tarChosen) == self.agentNum:
-            reward += 0.8 * np.ones(self.agentNum)/ENV_H
-
-        if np.sum(tarDone) == self.agentNum:
+        # Update step counter
+        if not hasattr(self, 'current_step'):
+            self.current_step = 0
+        self.current_step += 1
+        
+        # Calculate exploration progress
+        current_explored_count = np.sum(self.explored_map)
+        exploration_difference = current_explored_count - self.previous_explored_count
+        self.previous_explored_count = current_explored_count
+        
+        # Calculate exploration ratio
+        exploration_ratio = current_explored_count / (ENV_H * ENV_W)
+        
+        # Calculate time-based scaling factor (1x to 2x)
+        time_scale = 1.0 + (self.current_step / MAX_EP_STEPS)
+        
+        # Calculate base reward
+        if exploration_difference > 0:
+            # Positive reward for new area, scaled by time
+            reward_value = exploration_difference * time_scale
+        else:
+            # Negative reward (penalty) for no new area
+            reward_value = exploration_difference  # No time scaling for penalties
+        
+        # Calculate overlap penalties
+        overlap_counts = self._calculate_overlap_penalty()
+        overlap_penalties = OVERLAP_PENALTY * overlap_counts
+        
+        # Apply wall collision penalty (-0.5 for each collision) and overlap penalties
+        reward = reward_value * np.ones(self.agentNum)  # All agents get same base reward
+        reward[collision_with_wall == 1] -= 0.5  # Penalty for agents that hit walls
+        reward -= overlap_penalties  # Apply overlap penalties
+        
+        # Add bonus multiplier for full exploration
+        if exploration_ratio == 1.0:
+            reward *= 1.5  # 1.5x multiplier for achieving full exploration
             done = True
-            success = 1
-        elif conflict == 1 or collision_true == 1:
+        elif self.current_step >= MAX_EP_STEPS:
             done = True
         else:
             done = False
 
-        return sATAA, reward, done, agentDone, collision, collision_true, success, conflict
+        # Get new state
+        state = np.zeros((self.agentNum, self.n_features))
+        for i in range(self.agentNum):
+            state[i] = self._get_state(i)
+
+        return state, reward, done, exploration_ratio
 
     def render(self):
+        """Update the environment visualization."""
         self.update()
+
+    def show_episode_info(self, episode, exploration_ratio):
+        """
+        Display episode information on the canvas.
+        
+        Args:
+            episode: Current episode number
+            exploration_ratio: Current exploration progress
+        """
+        # Clear previous info if exists
+        if hasattr(self, 'info_text'):
+            self.canvas.delete(self.info_text)
+        
+        # Show episode number and exploration ratio
+        self.info_text = self.canvas.create_text(
+            ENV_W * UNIT / 2, 10,
+            text=f'Episode: {episode} | Explored: {exploration_ratio:.1%}',
+            fill='black',
+            font=('Helvetica', 10, 'bold')
+        )

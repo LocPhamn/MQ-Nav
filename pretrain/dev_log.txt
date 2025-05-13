@@ -1,0 +1,23 @@
+ver 1.3.0
+Tóm tắt cơ chế reward:
+
+Khuyến khích khám phá:
+    Phần thưởng dương khi khám phá được vùng mới
+    Phần thưởng tăng dần theo thời gian (time_scale)
+    Thưởng đặc biệt khi khám phá hoàn toàn (1.5x)
+
+Khuyến khích hiệu quả:
+    Phạt khi va chạm tường (-0.5)
+    Phạt khi các agent khám phá chồng lấp vùng (OVERLAP_PENALTY = 0.2)
+    Phạt khi không khám phá được vùng mới
+
+Đặc điểm quan trọng:
+    Tất cả các agent nhận cùng một phần thưởng cơ bản
+    Phần thưởng được điều chỉnh riêng cho từng agent dựa trên hành vi của chúng
+    Hệ thống khuyến khích các agent phân tán và khám phá các vùng khác nhau
+
+Mục tiêu của hệ thống reward:
+    Khuyến khích khám phá nhanh và hiệu quả
+    Tránh va chạm với tường
+    Phân bố các agent để tránh chồng lấp vùng khám phá
+    Thưởng cho việc hoàn thành nhiệm vụ khám phá

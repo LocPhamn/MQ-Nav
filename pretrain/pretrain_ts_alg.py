@@ -1,3 +1,20 @@
+"""
+Smart Multi-Agent Deep Q-Network (SMADQN) Implementation
+
+This module implements a Deep Q-Network algorithm for multi-agent systems.
+It uses a neural network to approximate Q-values and includes features like:
+- Experience replay memory
+- Target network for stable learning
+- Soft parameter updates
+- RMSProp optimization
+
+The network architecture consists of:
+- Input layer: State features
+- Hidden layer 1: 300 units with ReLU
+- Hidden layer 2: 200 units with ReLU
+- Output layer: Q-values for each action
+"""
+
 import numpy as np
 import tensorflow as tf
 if tf.__version__[0] == '2':
@@ -8,6 +25,13 @@ tf.set_random_seed(1)
 
 
 class SMADQN:
+    """
+    Smart Multi-Agent Deep Q-Network implementation.
+    
+    This class implements the DQN algorithm with several improvements
+    for multi-agent reinforcement learning.
+    """
+    
     def __init__(
             self,
             n_actions,
@@ -15,12 +39,27 @@ class SMADQN:
             mode,
             model_path,
             learning_rate=0.01,
-            reward_decay=1,
+            reward_decay=0.9,
             replace_target_iter=300,
             memory_size=500,
             batch_size=32,
             tau=0.001, 
     ):
+        """
+        Initialize the SMADQN agent.
+        
+        Args:
+            n_actions (int): Number of possible actions
+            n_features (int): Number of state features
+            mode (str): 'train' or 'test' mode
+            model_path (str): Path to save/load model parameters
+            learning_rate (float): Learning rate for optimization
+            reward_decay (float): Discount factor for future rewards
+            replace_target_iter (int): Steps between target network updates
+            memory_size (int): Size of replay memory
+            batch_size (int): Size of training batches
+            tau (float): Soft update parameter
+        """
         self.n_actions = n_actions
         self.n_features = n_features
         self.lr = learning_rate
@@ -30,7 +69,7 @@ class SMADQN:
         self.batch_size = batch_size
         self.model_path = model_path+"Net_parameter.ckpt"
         self.learn_step_counter = 0
-        self.memory = np.zeros((self.memory_size, (n_features+1) * 2 + 1 + 1))  # s,a,r, a',done,s'
+        self.memory = np.zeros((self.memory_size, n_features * 2 + 2))  # s, a, r, s'
 
         self._build_net()
         t_params = tf.get_collection('target_net_params')
@@ -45,6 +84,14 @@ class SMADQN:
             saver.restore(self.sess, self.model_path)
 
     def _build_net(self):
+        """
+        Build the neural network architecture.
+        Creates both evaluation and target networks with identical structure:
+        - Input layer: state features
+        - Hidden layer 1: 300 units with ReLU
+        - Hidden layer 2: 200 units with ReLU
+        - Output layer: Q-values for each action
+        """
         # ------------------ build evaluate_net ------------------
         self.s = tf.placeholder(tf.float32, [None, self.n_features], name='s')
         self.q_target = tf.placeholder(tf.float32, [None, self.n_actions], name='Q_target')
@@ -90,48 +137,72 @@ class SMADQN:
                 self.b3_tar = tf.get_variable('b3', [1, self.n_actions], initializer=b_initializer, collections=c_names)
                 self.q_next = tf.matmul(l2, self.w3_tar) + self.b3_tar
 
-    def store_transition(self, s, a, r, a_, done, s_):
+    def store_transition(self, s, a, r, s_, done):
+        """
+        Store transition in replay memory.
+        
+        Args:
+            s: Current state
+            a: Action taken
+            r: Reward received
+            s_: Next state
+            done: Whether episode ended
+        """
         if not hasattr(self, 'memory_counter'):
             self.memory_counter = 0
-        transition = np.hstack((s, a, r, a_, done, s_))
+        transition = np.hstack((s, [a, r], s_))
         index = self.memory_counter % self.memory_size
-        self.memory[index, : len(transition)] = transition
+        self.memory[index, :] = transition
         self.memory_counter += 1
 
     def choose_action(self, observation):
+        """
+        Choose action based on current observation using epsilon-greedy policy.
+        
+        Args:
+            observation: Current state observation
+            
+        Returns:
+            int: Selected action index
+        """
         observation = observation[np.newaxis, :]
         actions_value = self.sess.run(self.q_eval, feed_dict={self.s: observation})
         action = np.argmax(actions_value)
         return action
 
     def learn(self):
+        """
+        Perform one step of training on a batch from replay memory.
+        Updates both evaluation and target networks.
+        """
         self.sess.run(self.soft_replace_dqn)
         if self.memory_counter > self.memory_size:
             sample_index = np.random.choice(self.memory_size, size=self.batch_size)
         else:
             sample_index = np.random.choice(self.memory_counter, size=self.batch_size)
         batch_memory = self.memory[sample_index, :]
+
         q_next, q_eval = self.sess.run(
             [self.q_next, self.q_eval],
             feed_dict={
-                self.s_: batch_memory[:, - self.n_features:],
-                self.s: batch_memory[:, :self.n_features],
+                self.s_: batch_memory[:, -self.n_features:],  # next state
+                self.s: batch_memory[:, :self.n_features],    # current state
             })
+
         q_target = q_eval.copy()
-        eval_act_index = batch_memory[:, self.n_features].astype(int)
-        reward = batch_memory[:, self.n_features + 1]
-        done = batch_memory[:, self.n_features + 3]
-        for i in range(self.batch_size):
-            if done[i] == 0:
-                q_target[i, eval_act_index[i]] = reward[i] + self.gamma * np.max(q_next[i, :])
-            else:
-                q_target[i, eval_act_index[i]] = reward[i]
+        batch_index = np.arange(self.batch_size, dtype=np.int32)
+        eval_act_index = batch_memory[:, self.n_features].astype(int)  # action index
+        reward = batch_memory[:, self.n_features + 1]  # reward
+
+        q_target[batch_index, eval_act_index] = reward + self.gamma * np.max(q_next, axis=1)
+
         _, self.cost = self.sess.run([self._train_op, self.loss],
                                      feed_dict={self.s: batch_memory[:, :self.n_features],
-                                                self.q_target: q_target})
+                                              self.q_target: q_target})
         self.learn_step_counter += 1
 
     def save_parameters(self):
+        """Save the trained model parameters to file."""
         saver = tf.train.Saver()
         save_path = saver.save(self.sess, self.model_path)
         print('Save parameters.')
