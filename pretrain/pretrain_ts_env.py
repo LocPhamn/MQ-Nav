@@ -289,8 +289,11 @@ class ENV(tk.Tk, object):
         # Calculate exploration ratio
         exploration_ratio = current_explored_count / (ENV_H * ENV_W)
         
-        # Calculate time-based scaling factor (1x to 2x)
-        time_scale = 1.0 + (self.current_step / MAX_EP_STEPS)
+        # Calculate time-based scaling factor (1x to 3x)
+        time_scale = 1.0 + (2.0 * self.current_step / MAX_EP_STEPS)
+        
+        # Initialize done flag
+        done = False
         
         # Calculate base reward
         if exploration_difference > 0:
@@ -300,23 +303,32 @@ class ENV(tk.Tk, object):
             # Negative reward (penalty) for no new area
             reward_value = exploration_difference  # No time scaling for penalties
         
-        # Calculate overlap penalties
+        # Calculate overlap penalties (reduced from 0.2 to 0.1)
         overlap_counts = self._calculate_overlap_penalty()
-        overlap_penalties = OVERLAP_PENALTY * overlap_counts
+        overlap_penalties = 0.1 * overlap_counts
         
-        # Apply wall collision penalty (-0.5 for each collision) and overlap penalties
+        # Apply wall collision penalty (-1.0 for each collision) and overlap penalties
         reward = reward_value * np.ones(self.agentNum)  # All agents get same base reward
-        reward[collision_with_wall == 1] -= 0.5  # Penalty for agents that hit walls
+        reward[collision_with_wall == 1] -= 1.0  # Increased penalty for agents that hit walls
         reward -= overlap_penalties  # Apply overlap penalties
         
-        # Add bonus multiplier for full exploration
-        if exploration_ratio == 1.0:
-            reward *= 1.5  # 1.5x multiplier for achieving full exploration
+        # Add constant reward for movement to encourage continuous exploration
+        reward += 0.1  # Small constant reward for each step
+        
+        # Add progressive reward multipliers based on exploration milestones
+        if exploration_ratio >= 0.5 and exploration_ratio < 0.75:
+            reward *= 1.2  # 1.2x multiplier for reaching 50% exploration
+        elif exploration_ratio >= 0.75 and exploration_ratio < 1.0:
+            reward *= 1.5  # 1.5x multiplier for reaching 75% exploration
+        elif exploration_ratio == 1.0:
+            reward *= 2.0  # 2.0x multiplier for achieving full exploration
             done = True
         elif self.current_step >= MAX_EP_STEPS:
             done = True
-        else:
-            done = False
+
+        # Multiply final reward by exploration ratio when episode ends
+        if done:
+            reward *= exploration_ratio
 
         # Get new state
         state = np.zeros((self.agentNum, self.n_features))

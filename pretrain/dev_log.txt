@@ -1,4 +1,5 @@
-ver 1.3.0
+__ver 1.3.0__
+
 Tóm tắt cơ chế reward:
 
 Khuyến khích khám phá:
@@ -21,3 +22,62 @@ Mục tiêu của hệ thống reward:
     Tránh va chạm với tường
     Phân bố các agent để tránh chồng lấp vùng khám phá
     Thưởng cho việc hoàn thành nhiệm vụ khám phá
+
+__ver 1.3.1__
+
+Khuyến khích khám phá:
+    Thưởng theo mức độ khám phá của bản đồ (up to 1x)
+
+__ver 1.4.0__
+
+Tăng Hệ Số Thời Gian (Time Scaling):
+    Thay đổi từ khoảng 1.0-2.0x thành 1.0-3.0x
+    -> Tạo ra áp lực thời gian mạnh hơn khi episode tiến triển
+    Công thức: time_scale = 1.0 + (2.0 * self.current_step / MAX_EP_STEPS)
+
+Giảm Hình Phạt Chồng Chéo (Overlap Penalty):
+    Giảm từ 0.2 xuống 0.1
+    -> Agent ít thận trọng hơn về việc chồng chéo
+    Công thức: overlap_penalties = 0.1 * overlap_counts
+
+Tăng Hình Phạt Va Chạm Tường (Wall Collision Penalty):
+    Tăng từ -0.5 lên -1.0
+    -> Ngăn cản các bước di chuyển không hợp lệ mạnh hơn
+    Công thức: reward[collision_with_wall == 1] -= 1.0
+
+Thêm Phần Thưởng Di Chuyển Cố Định:
+    Thêm +0.1 điểm thưởng cho mỗi bước di chuyển
+    -> Khuyến khích di chuyển liên tục và khám phá
+    Công thức: reward += 0.1
+
+Thêm Hệ Số Nhân Theo Mốc Khám Phá:
+    50% khám phá: nhân 1.2x
+    75% khám phá: nhân 1.5x
+    100% khám phá: nhân 2.0x
+    -> Tạo động lực rõ ràng hơn để đạt được các mốc khám phá
+
+Giữ Nguyên Hệ Số Nhân Cuối Episode:
+    Vẫn nhân phần thưởng cuối cùng với tỷ lệ khám phá
+    Duy trì động lực tổng thể cho việc khám phá toàn diện
+
+
+sumary:
+Phần thưởng cơ bản cho việc khám phá:
+    Nếu phát hiện được vùng mới (exploration_difference > 0):
+    Phần thưởng = số ô mới khám phá × hệ số thời gian
+    Hệ số thời gian tăng dần từ 1.0 đến 3.0 theo số bước đi
+Nếu không phát hiện vùng mới:
+    Phần thưởng = số ô mới khám phá (giá trị âm)
+Phạt va chạm tường:
+    Mỗi lần va chạm tường bị trừ 1.0 điểm
+Phạt chồng lấp vùng khám phá:
+    Mỗi cặp agent có vùng khám phá chồng lấp sẽ bị phạt
+    Hệ số phạt là 0.1 cho mỗi ô chồng lấp
+Phần thưởng khuyến khích di chuyển:
+    Mỗi bước đi được thưởng 0.1 điểm
+Hệ số nhân theo tiến độ khám phá:
+    Đạt 50% khám phá: nhân 1.2
+    Đạt 75% khám phá: nhân 1.5
+    Đạt 100% khám phá: nhân 2.0
+Phần thưởng cuối tập:
+    Khi kết thúc tập (done = True), phần thưởng cuối cùng sẽ được nhân với tỷ lệ khám phá
