@@ -315,6 +315,10 @@ class ENV(tk.Tk, object):
         # Add constant reward for movement to encourage continuous exploration
         reward += 0.1  # Small constant reward for each step
         
+        # Add time-based penalty that scales with MAX_EP_STEPS
+        time_penalty = -0.1 * (self.current_step / MAX_EP_STEPS)
+        reward += time_penalty
+        
         # Add progressive reward multipliers based on exploration milestones
         if exploration_ratio >= 0.5 and exploration_ratio < 0.75:
             reward *= 1.2  # 1.2x multiplier for reaching 50% exploration

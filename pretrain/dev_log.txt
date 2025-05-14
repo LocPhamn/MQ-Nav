@@ -60,6 +60,12 @@ Giữ Nguyên Hệ Số Nhân Cuối Episode:
     Vẫn nhân phần thưởng cuối cùng với tỷ lệ khám phá
     Duy trì động lực tổng thể cho việc khám phá toàn diện
 
+__ver 1.4.1__
+
+Thêm Hình Phạt Khi Tốn Nhiều Step
+    Tăng hình phạt khi số step tăng
+    -> Tạo áp lực hoàn thành sớm cho agents
+    Công thức: time_penalty = -0.1 * (self.current_step / MAX_EP_STEPS)
 
 sumary:
 Phần thưởng cơ bản cho việc khám phá:
@@ -79,5 +85,8 @@ Hệ số nhân theo tiến độ khám phá:
     Đạt 50% khám phá: nhân 1.2
     Đạt 75% khám phá: nhân 1.5
     Đạt 100% khám phá: nhân 2.0
+Thêm Hình Phạt Khi Tốn Nhiều Step
+    Tăng hình phạt khi số step tăng
+
 Phần thưởng cuối tập:
     Khi kết thúc tập (done = True), phần thưởng cuối cùng sẽ được nhân với tỷ lệ khám phá
