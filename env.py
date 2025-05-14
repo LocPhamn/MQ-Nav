@@ -148,6 +148,9 @@ class ENV(tk.Tk, object):
         self.canvas.delete("founded_target")
         self.current_step = 0  # Reset step counter
         self.target_rewards_given = np.zeros(self.agentNum)  # Reset target rewards tracking
+        
+        # Update statistics display after reset
+        self.show_stats()
 
         sATAA = np.zeros((self.agentNum, 2 * (2 * self.agentNum - 1)))
         agent_coordi = np.zeros((self.agentNum, 2))
@@ -297,6 +300,31 @@ class ENV(tk.Tk, object):
             base_actionA += observation[action*2: (action+1)*2]/np.linalg.norm(observation[action*2:(action+1)*2])*self.stepLengthFree
         return base_actionA[0], base_actionA[1]
 
+    def show_stats(self):
+        """Display current statistics on the canvas"""
+        # Clear previous stats if they exist
+        if hasattr(self, 'stats_text'):
+            self.canvas.delete(self.stats_text)
+        
+        # Calculate exploration ratio
+        exploration_ratio = np.sum(self.grid_map) / (ENV_H * ENV_W)
+        
+        # Calculate number of found targets
+        found_targets = np.sum(self.founded_targets)
+        
+        # Create stats text
+        stats = f'Step: {self.current_step}/{self.MAX_EP_STEPS} | Explored: {exploration_ratio:.1%} | Found Targets: {found_targets}/{self.agentNum}'
+        
+        # Display stats at the top of the canvas
+        self.stats_text = self.canvas.create_text(
+            ENV_W * UNIT / 2, 20,  # Position at top center
+            text=stats,
+            fill='black',
+            font=('Helvetica', 10, 'bold')
+        )
+        # Make sure stats are always on top
+        self.canvas.tag_raise(self.stats_text)
+
     def move(self, move, agentExistObstacle_Target, otherTarCoordi, action, action_h, drawTrajectory):
         # Initialize arrays
         done_collision_cross = np.zeros(self.agentNum)
@@ -313,6 +341,9 @@ class ENV(tk.Tk, object):
 
         # Update step counter
         self.current_step += 1
+
+        # Update statistics display
+        self.show_stats()
 
         # Pre-calculate all coordinates once
         agent_coords = np.array([self.canvas.coords(agent) for agent in self.agent_all])
@@ -341,11 +372,12 @@ class ENV(tk.Tk, object):
         new_grid_positions = new_positions / UNIT
 
         # Check wall collisions for all agents at once
+        # Consider agent size when checking wall collisions
         wall_collision = (
-            (new_grid_positions[:, 0] <= 0) | 
-            (new_grid_positions[:, 0] >= ENV_W-1) |
-            (new_grid_positions[:, 1] <= 0) | 
-            (new_grid_positions[:, 1] >= ENV_H-1)
+            (new_positions[:, 0] - self.agentSize <= 0) | 
+            (new_positions[:, 0] + self.agentSize >= ENV_W * UNIT) |
+            (new_positions[:, 1] - self.agentSize <= 0) | 
+            (new_positions[:, 1] + self.agentSize >= ENV_H * UNIT)
         )
         move[wall_collision] = [0, 0]
         reward[wall_collision] -= 1.0
@@ -374,6 +406,7 @@ class ENV(tk.Tk, object):
             if np.any(square_collisions):
                 move[i] = [0, 0]
                 reward[i] -= 1.0
+                done_collision_obs += 1
                 continue
 
             # Check round obstacles using vectorized distance calculation
@@ -386,6 +419,7 @@ class ENV(tk.Tk, object):
             if np.any(distances < (self.agentSize + round_obs_sizes)):
                 move[i] = [0, 0]
                 reward[i] -= 1.0
+                done_collision_obs += 1
                 continue
 
             # Update exploration
