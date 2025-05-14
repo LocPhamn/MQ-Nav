@@ -1,3 +1,20 @@
+"""
+Hybrid Deep Reinforcement Learning Algorithm Implementation
+
+This module implements a hybrid reinforcement learning algorithm that combines:
+1. Deep Deterministic Policy Gradient (DDPG) - For continuous action space
+2. Deep Q-Network (DQN) - For discrete action space
+
+The algorithm is designed to handle both continuous and discrete action spaces in a single framework.
+It uses experience replay and target networks to stabilize training.
+
+Key Components:
+- DDPG: Actor-Critic architecture for continuous control
+- DQN: Q-learning with neural networks for discrete actions
+- Experience Replay: Store and sample transitions for stable learning
+- Target Networks: Slowly updated networks to provide stable training targets
+"""
+
 import numpy as np
 import tensorflow as tf
 if tf.__version__[0] == '2':
@@ -8,6 +25,37 @@ tf.set_random_seed(1)
 
 
 class HIST_Alg(object):
+    """
+    Hybrid Intelligent System Training Algorithm (HIST)
+    
+    This class implements a hybrid reinforcement learning agent that combines DDPG and DQN
+    to handle both continuous and discrete action spaces. The algorithm can switch between
+    DDPG and DQN based on the current state and action requirements.
+    
+    Args:
+        a_dim (int): Dimension of continuous action space
+        n_actions (int): Number of discrete actions for DQN
+        s_dim (int): Total state space dimension
+        s_dim_ddpg (int): State dimension for DDPG
+        s_dim_dqn (int): State dimension for DQN
+        a_bound (float): Action bound for DDPG's continuous actions
+        envSize (int): Environment size parameter
+        model_path_dqn (str): Path to load DQN model
+        save_path_ca (str): Path to save the combined agent
+        mode (str): 'train' for training mode, else evaluation mode
+        LR_DQN (float, optional): Learning rate for DQN. Defaults to 0.01
+        LR_A (float, optional): Learning rate for DDPG actor. Defaults to 0.001
+        LR_C (float, optional): Learning rate for DDPG critic. Defaults to 0.002
+        GAMMA (float, optional): Discount factor. Defaults to 1
+        TAU (float, optional): Soft update parameter. Defaults to 0.01
+        BATCH_SIZE (int, optional): Batch size for training. Defaults to 32
+        MEMORY_SIZE_ddpg (int, optional): Size of DDPG replay buffer. Defaults to 3000
+    
+    Attributes:
+        memory_ddpg (np.ndarray): Experience replay buffer for DDPG
+        sess (tf.Session): TensorFlow session for DDPG
+        sess1 (tf.Session): TensorFlow session for DQN
+    """
     def __init__(
             self, a_dim, n_actions, s_dim, s_dim_ddpg, s_dim_dqn, a_bound, envSize, model_path_dqn, save_path_ca, mode,
             LR_DQN=0.01,
@@ -61,6 +109,19 @@ class HIST_Alg(object):
             saver.restore(self.sess, self.save_path_ca)
 
     def build_dqn_net(self):
+        """
+        Builds the DQN neural network architecture.
+        
+        Creates two networks:
+        1. Evaluation Network: Used for action selection
+        2. Target Network: Used for stable Q-value targets
+        
+        Network Architecture:
+        - Input Layer: State dimension (s_dim_dqn)
+        - Hidden Layer 1: 300 units with ReLU activation
+        - Hidden Layer 2: 200 units with ReLU activation
+        - Output Layer: n_actions units (Q-values for each action)
+        """
         g1 = tf.Graph()
         with g1.as_default():
             self.s = tf.placeholder(tf.float32, [None, self.s_dim_dqn], name='s')
@@ -106,12 +167,32 @@ class HIST_Alg(object):
             saver.restore(self.sess1, self.model_path_dqn)
 
     def choose_action_dqn(self, observation):
+        """
+        Selects an action using the DQN network.
+        
+        Args:
+            observation (np.ndarray): Current state observation
+            
+        Returns:
+            int: Selected action index based on maximum Q-value
+        """
         observation = observation[np.newaxis, :]
         actions_value = self.sess1.run(self.q_eval, feed_dict={self.s: observation})
         action = np.argmax(actions_value)
         return action
 
     def _build_a(self, s, scope, trainable):
+        """
+        Builds the DDPG actor network.
+        
+        Args:
+            s (tf.Tensor): Input state tensor
+            scope (str): TensorFlow variable scope
+            trainable (bool): Whether the network is trainable
+            
+        Returns:
+            tf.Tensor: Continuous action output scaled to action bounds
+        """
         with tf.variable_scope(scope):
             net_1 = tf.layers.dense(s, 100, activation=tf.nn.relu, name='l1_actor', trainable=trainable)
             net_2 = tf.layers.dense(net_1, 100, activation=tf.nn.relu, name='l2_actor', trainable=trainable)
@@ -119,6 +200,18 @@ class HIST_Alg(object):
             return tf.multiply(a, self.a_bound, name='scaled_a')
 
     def _build_c(self, s, a, scope, trainable):
+        """
+        Builds the DDPG critic network.
+        
+        Args:
+            s (tf.Tensor): Input state tensor
+            a (tf.Tensor): Input action tensor
+            scope (str): TensorFlow variable scope
+            trainable (bool): Whether the network is trainable
+            
+        Returns:
+            tf.Tensor: Q-value prediction
+        """
         with tf.variable_scope(scope):
             n_l1 = 100
             n_l2 = 100
@@ -132,9 +225,28 @@ class HIST_Alg(object):
             return tf.layers.dense(net_2, 1, trainable=trainable)
 
     def choose_action_ddpg(self, s):
+        """
+        Selects a continuous action using the DDPG actor network.
+        
+        Args:
+            s (np.ndarray): Current state
+            
+        Returns:
+            np.ndarray: Continuous action values
+        """
         return self.sess.run(self.a, {self.S: s[np.newaxis, :]})[0]
 
     def learn_ddpg(self):
+        """
+        Performs one step of learning for DDPG.
+        
+        Process:
+        1. Sample batch from replay buffer
+        2. Compute target Q-values using target networks
+        3. Update critic by minimizing TD error
+        4. Update actor using policy gradient
+        5. Soft update target networks
+        """
         self.sess.run(self.soft_replace)
         sample_index = np.random.choice(self.MEMORY_SIZE_ddpg, size=self.BATCH_SIZE)
         bt = self.memory_ddpg[sample_index, :]
@@ -165,12 +277,29 @@ class HIST_Alg(object):
         self.sess.run(self.ctrain, {self.S: bsDDPG, self.a: ba, self.q_target_ddpg: q_target})
 
     def store_transition_ddpg(self, s, a, r, s_, action_, agentdone, nextDDPG):
+        """
+        Stores a transition in the DDPG replay buffer.
+        
+        Args:
+            s (np.ndarray): Current state
+            a (np.ndarray): Action taken
+            r (float): Reward received
+            s_ (np.ndarray): Next state
+            action_ (int): Next action index
+            agentdone (bool): Whether episode is done
+            nextDDPG (bool): Whether to use DDPG for next step
+        """
         transition = np.hstack((s, a, [r], s_, action_, agentdone, nextDDPG))
         index_ddpg = self.pointer_ddpg % self.MEMORY_SIZE_ddpg
         self.memory_ddpg[index_ddpg, :] = transition
         self.pointer_ddpg += 1
 
     def save_Parameters(self):
+        """
+        Saves the model parameters to disk.
+        
+        Saves both DDPG and DQN network parameters to the specified paths.
+        """
         saver = tf.train.Saver()
         save_path_ca = saver.save(self.sess, self.save_path_ca)
         print('Save parameters.')
