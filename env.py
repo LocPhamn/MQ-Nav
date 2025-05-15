@@ -6,7 +6,7 @@ else:
     import tkinter as tk
 
 UNIT = 20  # grid size
-ENV_H = 36  # env height
+ENV_H = 30  # env height
 ENV_W = ENV_H  # env width
 halfUnit = UNIT / 2
 obsNum = 10
@@ -325,6 +325,41 @@ class ENV(tk.Tk, object):
         # Make sure stats are always on top
         self.canvas.tag_raise(self.stats_text)
 
+    def log_episode_stats(self, episode, total_reward, success, collision_agent, collision_obs, conflict):
+        """
+        Log episode statistics to a file.
+        
+        Args:
+            episode (int): Current episode number
+            total_reward (float): Total reward for the episode
+            success (int): Whether all targets were found
+            collision_agent (int): Number of agent collisions
+            collision_obs (int): Number of obstacle collisions
+            conflict (int): Number of conflicts
+        """
+        # Calculate final statistics
+        exploration_ratio = np.sum(self.grid_map) / (ENV_H * ENV_W)
+        found_targets = np.sum(self.founded_targets)
+        
+        # Create log entry
+        log_entry = {
+            'episode': episode,
+            'steps': self.current_step,
+            'total_reward': total_reward,
+            'exploration_ratio': exploration_ratio,
+            'found_targets': found_targets,
+            'success': success,
+            'collision_agent': collision_agent,
+            'collision_obs': collision_obs,
+            'conflict': conflict
+        }
+        
+        # Write to log file
+        with open('episode_logs.csv', 'a') as f:
+            if episode == 1:  # Write header for first episode
+                f.write(','.join(log_entry.keys()) + '\n')
+            f.write(','.join(str(v) for v in log_entry.values()) + '\n')
+
     def move(self, move, agentExistObstacle_Target, otherTarCoordi, action, action_h, drawTrajectory):
         # Initialize arrays
         done_collision_cross = np.zeros(self.agentNum)
@@ -468,8 +503,17 @@ class ENV(tk.Tk, object):
         for i in range(self.agentNum):
             if reached_targets[i]:
                 agentDone[i] = action[i] + 1
-                
-        if np.sum(agentDone > 0) == self.agentNum:
+
+        # Check if 3 targets are found
+        found_targets_count = np.sum(self.founded_targets)
+        if found_targets_count >= 3:
+            success = 1
+            done = np.ones(self.agentNum)
+            # Calculate bonus reward based on steps taken
+            step_ratio = 1 - (self.current_step / self.MAX_EP_STEPS)
+            bonus_reward = 500 * step_ratio  # Base bonus of 500, scaled by remaining steps
+            reward += bonus_reward  # Add bonus to all agents
+        elif np.sum(agentDone > 0) == self.agentNum:
             success = 1
             done = np.ones(self.agentNum)
 

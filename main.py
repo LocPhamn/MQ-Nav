@@ -73,12 +73,12 @@ timeStart = time.time()
 for ep in range(ep_num):
     episode += 1
     # Generate obs, agent, tar
-    locationArea = np.random.choice(36, agentNum * 2 + obsNum, replace=False)
+    locationArea = np.random.choice(envSize, agentNum * 2 + obsNum, replace=False)
     for i in range(obsNum):
-        obstacleArray[i] = [locationArea[i] // 6 * 6 + 2.5, locationArea[i] % 6 * 6 + 2.5] + 1 * np.random.rand(2)
+        obstacleArray[i] = [locationArea[i] // 5 * 5 + 2.5, locationArea[i] % 5 * 5 + 2.5] + 1 * np.random.rand(2)
     for i in range(agentNum):
-        tarPositionArray0[i] = [locationArea[obsNum + i] // 6 * 6 + 2, locationArea[obsNum + i] % 6 * 6 + 2] + 2 * np.random.rand(2)
-        agentPositionArray0[i] = [locationArea[obsNum + agentNum + i] // 6 * 6 + 2, locationArea[obsNum + agentNum + i] % 6 * 6 + 2] + 2 * np.random.rand(2)
+        tarPositionArray0[i] = [locationArea[obsNum + i] // 5 * 5 + 2, locationArea[obsNum + i] % 5 * 5 + 2] + 2 * np.random.rand(2)
+        agentPositionArray0[i] = [locationArea[obsNum + agentNum + i] // 5 * 5 + 2, locationArea[obsNum + agentNum + i] % 5 * 5 + 2] + 2 * np.random.rand(2)
     sortTar_index = np.argsort(tarPositionArray0[:, 0])
     for i in range(agentNum):
         tarPositionArray[i, :] = tarPositionArray0[sortTar_index[i], :]
