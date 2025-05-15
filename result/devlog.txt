@@ -1,0 +1,45 @@
+Total Reward = Base Reward +
+               Collision Penalties +
+               Exploration Rewards +
+               Target Finding Rewards +
+               Completion Bonus +
+               Time Penalty +
+               Movement Reward
+
+__Ver1.2.0__
+Thêm phạt va chạm giữa các agent
+Chỉnh sửa tầm phát hiện bằng manhattan thay vì euclid
+Phạt khi agent đứng yên
+Chỉnh grid còn 30x30
+Tối ưu hóa chạy chương trình
+
+thêm phần thống kê
+
+Thống kê cho mỗi Episode:
+    Số bước đi (Steps)
+    Phần thưởng (Reward)
+    Trạng thái thành công (Success: Yes/No)
+    Số target đã tìm được (Found Targets: X/Y)
+    Số lần va chạm với agent khác (Agent Collisions)
+    Số lần va chạm với vật cản (Obstacle Collisions)
+    Số lần va chạm với tường (Wall Collisions)
+    Số lần xung đột (Conflicts)
+Thống kê mỗi 100 Episode (trong chế độ training):
+    Tỷ lệ thành công (Success Rate)
+    Trung bình số target tìm được mỗi episode (Average Targets Found)
+    Trung bình số lần va chạm với agent mỗi episode (Agent Collisions)
+    Trung bình số lần va chạm với vật cản mỗi episode (Obstacle Collisions)
+    Trung bình số lần va chạm với tường mỗi episode (Wall Collisions)
+    Trung bình số lần xung đột mỗi episode (Conflicts)
+    Phần thưởng trung bình (Average Reward)
+    Trung bình số bước để thành công (Average Steps to Success) - chỉ hiển thị nếu có ít nhất 3 lần thành công
+Thống kê cuối cùng (sau khi hoàn thành tất cả episodes):
+    Tổng số episode
+    Tỷ lệ thành công tổng thể
+    Trung bình số target tìm được mỗi episode
+    Trung bình số lần va chạm với agent mỗi episode
+    Trung bình số lần va chạm với vật cản mỗi episode
+    Trung bình số lần va chạm với tường mỗi episode
+    Trung bình số lần xung đột mỗi episode
+    Trung bình số bước mỗi episode
+    Thời gian chuẩn hóa (Normalized Time)

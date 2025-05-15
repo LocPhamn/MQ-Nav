@@ -62,10 +62,12 @@ timeCostSum_temp = 0
 meanTime_list = []
 collision_num = 0
 collision_obs_num = 0
+collision_wall_num = 0
 collisionNum_list = []
 success_num = 0
 successNum_list = []
-conflict_num = 0
+# conflict_num = 0  # Comment out conflict counter
+found_targets_num = 0
 timeStart = time.time()
 # ep_list = []
 # reward_list = []
@@ -103,6 +105,12 @@ for ep in range(ep_num):
     observation_h = np.tile(observation[:, -(agentNum - 1) * 2:], historyStep)
     observation_h_temp = observation_h
     collision_cross = np.zeros(agentNum)
+    
+    # Reset episode statistics
+    ep_collision_agent = 0
+    ep_collision_obs = 0
+    ep_collision_wall = 0
+    # ep_conflict = 0  # Comment out conflict update
 
     for step in range(MAX_EP_STEPS):
         env.render()
@@ -110,67 +118,42 @@ for ep in range(ep_num):
         action_ddpg = np.zeros(agentNum)
         for i in range(agentNum):
             agentExistObstacle_Target[i] = 0
-            # Target selection
-            # if collision_cross[i] != 1:
-            #     action[i] = RL.choose_action_dqn(np.hstack((observation[i], observation_h[i], observation[i, -2*(agentNum-1):])))
-            # tarAgentCoordi = (observation[i, 2*action[i]:2*action[i]+2]) * envSize
-            # tarAgentDis = np.linalg.norm(tarAgentCoordi)
-            # if tarAgentDis >= 1:
-            #     for k in range(agentNum):
-            #         if k != action[i] and 1 < np.linalg.norm(observation[i, 2*k:2*k+2]) * envSize < 2.5:
-            #             otherTarCoordi[i] = -(observation[i, 2*k:2*k+2]) * envSize
-            #             break
-            #     tarAgentDirCoordi = tarAgentCoordi / tarAgentDis
-            #     # Detect obstacles
-            #     agentExistObstacle_Target[i], agentObstacleDis[i, 0] = env.detect_obstacle(tarAgentDirCoordi, i, otherTarCoordi[i])
-            #     if agentExistObstacle_Target[i] == 1:
-            #         if action[i] != action_[i] and step:
-            #             tarAngle[i] = math.asin(tarAgentCoordi[0] / tarAgentDis)
-            #             if tarAgentCoordi[1] >= 0:
-            #                 if tarAgentCoordi[0] >= 0:
-            #                     tarAngle[i] = np.pi - tarAngle[i]
-            #                 if tarAgentCoordi[0] < 0:
-            #                     tarAngle[i] = -np.pi - tarAngle[i]
-            #             for interval in range(3):   # Each +30° direction
-            #                 tarAngleAround = tarAngle[i] + (interval+1) * np.pi / 6
-            #                 tarAngleAround_PolarCoordi = np.array([np.sin(tarAngleAround), -np.cos(tarAngleAround)])
-            #                 temp, agentObstacleDis[i, interval + 1] = env.detect_obstacle(tarAngleAround_PolarCoordi, i, otherTarCoordi[i])
-            #             for interval in range(3):  # Each -30° direction
-            #                 tarAngleAround = tarAngle[i] - (interval+1) * np.pi / 6
-            #                 tarAngleAround_PolarCoordi = np.array([np.sin(tarAngleAround), -np.cos(tarAngleAround)])
-            #                 temp, agentObstacleDis[i, interval + 4] = env.detect_obstacle(tarAngleAround_PolarCoordi, i, otherTarCoordi[i])
-
             observationCA[i] = np.hstack((observation[i, action[i]*2: action[i]*2+2], agentObstacleDis[i]))
             action_ddpg[i] = RL_DQN.make_decision(observation[i, action[i]*2: action[i]*2+2])
-
             actionMove = tarAngle[i] + action_ddpg[i]
             move[i, 0], move[i, 1] = env.step_ddpg(actionMove)
-            #     else:  # No obstacles ahead
-            #         move[i, 0], move[i, 1] = env.step_dqn(action[i], observation[i], agentDone[i])
-            # else:  # Arrive
-            #     move[i, 0], move[i, 1] = env.step_dqn(action[i], observation[i], agentDone[i])
 
-        observation_, reward, done, agentDone, collision_cross, collision_agent, collision_obs, success, conflict, agentPositionArray = \
+        observation_, reward, done, agentDone, collision_cross, collision_agent, collision_obs, success, conflict, agentPositionArray, collision_wall = \
             env.move(move, agentExistObstacle_Target, otherTarCoordi, action, action_h, 0)
 
+        # Update episode statistics
+        ep_collision_agent += collision_agent
+        ep_collision_obs += collision_obs
+        ep_collision_wall += collision_wall
+        # ep_conflict += conflict  # Comment out conflict update
+        ep_reward += reward
+        ep_timeCost += 1
+
+        # Update total statistics
+        collision_num += collision_agent
+        collision_obs_num += collision_obs
+        collision_wall_num += collision_wall
+        success_num += success
+        # conflict_num += conflict  # Comment out conflict update
+        found_targets_num += np.sum(env.founded_targets)
+        temp_rewardSum += min(ep_reward)
 
         action_h = action
         observation_h_temp[:, 2 * (agentNum - 1):] = observation_h[:, :-2 * (agentNum - 1)]
         observation_h_temp[:, :2 * (agentNum - 1)] = observation[:, -2 * (agentNum - 1):]
         step_total += 1
-        if mode == 'train':  # Learn
 
-            # if RL.pointer_ddpg > RL.MEMORY_SIZE_ddpg and sum(agentExistObstacle_Target):
-            #     RL.learn_ddpg()
-            if len(RL_DQN.replay_buffer) > 64:  # bạn có thể điều chỉnh batch size nếu muốn
+        if mode == 'train':
+            if len(RL_DQN.replay_buffer) > 64:
                 RL_DQN.train_main_network(batch_size=64)
 
-            # print(f'ts: {action}, angle: {np.around(action_ddpg, decimals=2)}')
-        ep_timeCost += 1
         agentExistObstacle_Target_old = agentExistObstacle_Target
-        ep_reward += reward
         otherTarCoordi = np.zeros((agentNum, 2))
-
 
         # Store transitions
         for i in range(agentNum):
@@ -206,45 +189,62 @@ for ep in range(ep_num):
             observation_All = np.hstack((observation_[i], observation_h_temp[i], observation_[i, -2*(agentNum-1):], agentObstacleDis[i]))
             if mode == 'train' and agentExistObstacle_Target[i] == 1:
                 RL_DQN.save_experience(observationCA[i], action_ddpg[i], reward[i], observation_All, done[i])
-                # RL.store_transition_ddpg(observationCA[i], action_ddpg[i], reward[i], observation_All, action_[i], done[i], agentNextDDPG)
+
         observation_h = observation_h_temp
         observation = observation_
 
         if sum(done) or step == MAX_EP_STEPS - 1:
-            collision_num += collision_agent
-            collision_obs_num += collision_obs
-            success_num += success
-            conflict_num += conflict
-            temp_rewardSum += min(ep_reward)
-            if mode == 'train':
-                # ep_list.append(episode)
-                # reward_list.append(np.around(min(ep_reward), decimals=3))
-                print(f'Ep: {episode}, R: {np.around(min(ep_reward), decimals=3)}')
             if success == 0:
                 ep_timeCost = MAX_EP_STEPS
             timeCostSum_temp += ep_timeCost
+            
+            # Display per-episode statistics
+            print(f"\nEpisode {episode} | Steps: {ep_timeCost} | Reward: {np.around(min(ep_reward), decimals=3)} | Success: {'Yes' if success else 'No'} | Found Targets: {np.sum(env.founded_targets)}/{env.agentNum} | Agent Collisions: {ep_collision_agent} | Obstacle Collisions: {ep_collision_obs} | Wall Collisions: {ep_collision_wall}")  # Removed conflict from display
+            
             break
-    if mode == 'train':
-        if episode % 100 == 0:
-            print(" ~~~~~~~  Statistics ~~~~~~~~  Ep ", episode)
-            print(f"Success: {success_num}, Collision: {collision_num}")
-            mean_reward = temp_rewardSum / 100
-            meanReward_list.append(mean_reward)
-            if success_num >= 3:
-                mean_time = timeCostSum_temp / success_num
-                meanTime_list.append(mean_time)
-            temp_rewardSum, timeCostSum_temp = 0, 0
-            collisionNum_list.append(collision_num)
-            collision_num = 0
-            collision_obs_num = 0
-            successNum_list.append(success_num)
-            success_num = 0
-            conflict_num = 0
-    elif episode == ep_num:
-        print(f" ~~~~~~~  Statistical result Ep {episode} ~~~~~~~~")
-        print(f"Success: {success_num}, Collision: {collision_num}, Normalized time: {np.around(timeCostSum_temp/ep_num/MAX_EP_STEPS, decimals=3)}")
 
+    # Display statistics every 100 episodes during training
+    if mode == 'train' and episode % 100 == 0:
+        print("\n" + "="*100)
+        print(f"Training Statistics - Episode {episode}")
+        print("="*100)
+        print(f"Success Rate: {success_num/100:.2%} | Avg Targets: {found_targets_num/100:.2f} | Avg Agent Collisions: {collision_num/100:.2f} | Avg Obstacle Collisions: {collision_obs_num/100:.2f} | Avg Wall Collisions: {collision_wall_num/100:.2f} | Avg Reward: {temp_rewardSum/100:.2f}", end='')  # Removed conflict from display
+        if success_num >= 3:
+            mean_time = timeCostSum_temp / success_num
+            print(f" | Avg Steps to Success: {mean_time:.2f}")
+        else:
+            print()
+        print("="*100 + "\n")
+        
+        # Reset statistics for next 100 episodes
+        meanReward_list.append(temp_rewardSum / 100)
+        if success_num >= 3:
+            meanTime_list.append(mean_time)
+        temp_rewardSum, timeCostSum_temp = 0, 0
+        collisionNum_list.append(collision_num)
+        collision_num = 0
+        collision_obs_num = 0
+        collision_wall_num = 0
+        found_targets_num = 0
+        successNum_list.append(success_num)
+        success_num = 0
+        # conflict_num = 0  # Comment out conflict reset
+
+# Display final statistics
 if mode == 'train':
+    print("\n" + "="*100)
+    print("Final Training Results")
+    print("="*100)
+    print(f"Total Episodes: {ep_num} | Success Rate: {success_num/ep_num:.2%} | Avg Targets: {found_targets_num/ep_num:.2f} | Avg Agent Collisions: {collision_num/ep_num:.2f} | Avg Obstacle Collisions: {collision_obs_num/ep_num:.2f} | Avg Wall Collisions: {collision_wall_num/ep_num:.2f} | Avg Steps: {timeCostSum_temp/ep_num:.2f} | Normalized Time: {np.around(timeCostSum_temp/ep_num/MAX_EP_STEPS, decimals=3)}")  # Removed conflict from display
+    print("="*100 + "\n")
+    
     RL.save_Parameters()
     np.savetxt(path+'meanReward.txt', meanReward_list)
+else:
+    print("\n" + "="*100)
+    print("Final Evaluation Results")
+    print("="*100)
+    print(f"Total Episodes: {ep_num} | Success Rate: {success_num/ep_num:.2%} | Avg Targets: {found_targets_num/ep_num:.2f} | Avg Agent Collisions: {collision_num/ep_num:.2f} | Avg Obstacle Collisions: {collision_obs_num/ep_num:.2f} | Avg Wall Collisions: {collision_wall_num/ep_num:.2f} | Avg Steps: {timeCostSum_temp/ep_num:.2f} | Normalized Time: {np.around(timeCostSum_temp/ep_num/MAX_EP_STEPS, decimals=3)}")  # Removed conflict from display
+    print("="*100 + "\n")
+
 print(f"Finished! Running time: {time.time() - timeStart}")

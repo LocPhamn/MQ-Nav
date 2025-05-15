@@ -241,10 +241,10 @@ class ENV(tk.Tk, object):
         agent_row, agent_col = int(agent_pos[1] // unit), int(agent_pos[0] // unit)
         new_cells = 0
 
-        # Bán kính phát hiện tính theo số ô lưới
-        detection_radius = int(observe_range * UNIT)
+        # Bán kính phát hiện cố định là 4 ô
+        detection_radius = 4
 
-        # Duyệt qua các ô nằm trong phạm vi bán kính
+        # Duyệt qua các ô nằm trong phạm vi bán kính Manhattan
         for r in range(-detection_radius, detection_radius + 1):
             for c in range(-detection_radius, detection_radius + 1):
                 # Tính tọa độ lưới của ô hiện tại
@@ -253,13 +253,13 @@ class ENV(tk.Tk, object):
 
                 # Kiểm tra xem ô có nằm trong lưới không
                 if 0 <= row < grid_matrix.shape[0] and 0 <= col < grid_matrix.shape[1]:
-                    # Kiểm tra ô có nằm trong vùng tròn phát hiện
-                    distance = (r) ** 2 + (c) ** 2
-                    if distance <= observe_range ** 2:
+                    # Kiểm tra ô có nằm trong vùng phát hiện sử dụng khoảng cách Manhattan
+                    manhattan_distance = abs(r) + abs(c)
+                    if manhattan_distance <= detection_radius:
                         if grid_matrix[row, col] == 0:
                             new_cells += 1
                             grid_matrix[row, col] = 1 # Đánh dấu vùng phát hiện bằng giá trị 1
-        return grid_matrix,new_cells
+        return grid_matrix, new_cells
 
     def detect_targets(self,grid_matrix,tar_pos,observe_range,unit):
         tar_row, tar_col = int(tar_pos[1] // unit), int(tar_pos[0] // unit)
@@ -279,7 +279,6 @@ class ENV(tk.Tk, object):
         for idx in range(len(self.targets)):
             tar_pos = self.targets[idx]
             if self.detect_targets(grid_matrix, tar_pos, observe_range, unit) and self.founded_targets[idx] == 0:
-                print(f"target {idx} đã được tìm thấy tại tọa độ: {tar_pos}")
                 self.canvas.create_rectangle(
                     tar_pos[0] - self.tarSize, tar_pos[1] - self.tarSize,
                     tar_pos[0] + self.tarSize, tar_pos[1] + self.tarSize,
@@ -327,7 +326,7 @@ class ENV(tk.Tk, object):
 
     def log_episode_stats(self, episode, total_reward, success, collision_agent, collision_obs, conflict):
         """
-        Log episode statistics to a file.
+        Log episode statistics to a file and display summary.
         
         Args:
             episode (int): Current episode number
@@ -359,12 +358,25 @@ class ENV(tk.Tk, object):
             if episode == 1:  # Write header for first episode
                 f.write(','.join(log_entry.keys()) + '\n')
             f.write(','.join(str(v) for v in log_entry.values()) + '\n')
+        
+        # Display episode summary
+        print(f"\nEpisode {episode} Summary:")
+        print(f"Steps taken: {self.current_step}")
+        print(f"Total reward: {total_reward:.2f}")
+        print(f"Exploration ratio: {exploration_ratio:.2%}")
+        print(f"Found targets: {found_targets}/{self.agentNum}")
+        print(f"Success: {'Yes' if success else 'No'}")
+        print(f"Agent collisions: {collision_agent}")
+        print(f"Obstacle collisions: {collision_obs}")
+        print(f"Conflicts: {conflict}")
+        print("-" * 50)
 
     def move(self, move, agentExistObstacle_Target, otherTarCoordi, action, action_h, drawTrajectory):
         # Initialize arrays
         done_collision_cross = np.zeros(self.agentNum)
         done_collision_agent = 0
         done_collision_obs = 0
+        done_collision_wall = 0  # Add wall collision counter
         success = 0
         arriveSame = 0
         done = np.zeros(self.agentNum)
@@ -386,6 +398,14 @@ class ENV(tk.Tk, object):
             (agent_coords[:, 0] + agent_coords[:, 2]) / 2,
             (agent_coords[:, 1] + agent_coords[:, 3]) / 2
         ))
+        
+        # Check if agents are staying in the same position
+        for i in range(self.agentNum):
+            if np.array_equal(agent_centers[i], self.prev_positions[i]):
+                reward[i] -= 0.5  # Penalty for staying in the same position
+        
+        # Update previous positions
+        self.prev_positions = agent_centers.copy()
         
         tar_coords = np.array([self.canvas.coords(target) for target in self.target_all])
         tar_centers = np.column_stack((
@@ -416,6 +436,7 @@ class ENV(tk.Tk, object):
         )
         move[wall_collision] = [0, 0]
         reward[wall_collision] -= 1.0
+        done_collision_wall = np.sum(wall_collision)  # Count wall collisions
 
         # Process each agent for obstacle collisions and exploration
         for i in range(self.agentNum):
@@ -456,6 +477,21 @@ class ENV(tk.Tk, object):
                 reward[i] -= 1.0
                 done_collision_obs += 1
                 continue
+
+            # Check collisions with other agents
+            for j in range(self.agentNum):
+                if i != j:  # Don't check collision with self
+                    other_agent_center = agent_centers[j]
+                    distance = np.sqrt(
+                        (new_x - other_agent_center[0])**2 + 
+                        (new_y - other_agent_center[1])**2
+                    )
+                    if distance < (2 * self.agentSize):  # If distance is less than sum of agent sizes
+                        move[i] = [0, 0]
+                        reward[i] -= 1.0  # Penalty for agent collision
+                        reward[j] -= 1.0  # Penalty for the other agent too
+                        done_collision_agent += 1
+                        break
 
             # Update exploration
             agent_center = (int(new_x), int(new_y))
@@ -550,7 +586,7 @@ class ENV(tk.Tk, object):
         # Calculate final agent positions
         agentNewPosition = agent_centers / UNIT - self.origin / UNIT
 
-        return sATAA, reward, done, agentDone, done_collision_cross, done_collision_agent, done_collision_obs, success, arriveSame, agentNewPosition
+        return sATAA, reward, done, agentDone, done_collision_cross, done_collision_agent, done_collision_obs, success, arriveSame, agentNewPosition, done_collision_wall
 
     def render(self):
         self.update()
