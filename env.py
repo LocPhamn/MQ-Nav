@@ -12,10 +12,11 @@ halfUnit = UNIT / 2
 obsNum = 10
 MAX_EP_STEPS = ENV_H * 3  # Maximum steps per episode
 color = ['lightblue', 'pink', 'royalblue', 'pink', 'lightblue', 'lightblue']
+
 class ENV(tk.Tk, object):
     def __init__(self, agentNum):
         super(ENV, self).__init__()
-        # Khởi tạo danh sách lưu vị trí trước đó của agent để tính vận tốc
+        # Initialize arrays
         self.prev_positions = np.zeros((agentNum, 2))
         self.agentNum = agentNum
         self.ENV_H = ENV_H
@@ -40,85 +41,312 @@ class ENV(tk.Tk, object):
         self.tar_center = np.zeros((self.agentNum, 2))
         self.obs_center = np.zeros((obsNum, 2))
         self.geometry('{0}x{1}'.format(ENV_H * UNIT, ENV_H * UNIT))
-        self.current_step = 0  # Add step counter
-        self.MAX_EP_STEPS = MAX_EP_STEPS  # Add MAX_EP_STEPS to class
+        self.current_step = 0
+        self.MAX_EP_STEPS = MAX_EP_STEPS
 
-        #new parameters
-        self.grid_map = np.zeros((ENV_H, ENV_H),dtype=int)
-        self.new_cell_point = [[] for _ in range(self.agentNum)]  # Initialize empty lists for each agent
+        # Cache for frequently used values
+        self.grid_map = np.zeros((ENV_H, ENV_H), dtype=int)
+        self.new_cell_point = [[] for _ in range(self.agentNum)]
         self.targets = []
         self.founded_targets = np.zeros(agentNum)
-        self.target_rewards_given = np.zeros(agentNum)  # Track which targets have been rewarded
+        self.target_rewards_given = np.zeros(agentNum)
+        
+        # Pre-compute detection angles
+        self.detection_angles = np.array([(i+1) * np.pi / 6 for i in range(3)])
+        self.detection_angles = np.concatenate([self.detection_angles, -self.detection_angles])
+        
         self._build_env()
 
     def _build_env(self):
         self.canvas = tk.Canvas(self, bg='white',
-                                height=ENV_H * UNIT,
-                                width=ENV_W * UNIT)
-        # Create grid
-        for i in range(ENV_H):
-            # Vertical lines
-            self.canvas.create_line(i * UNIT, 0, i * UNIT, ENV_H * UNIT, fill='lightgray')
-            # Horizontal lines
-            self.canvas.create_line(0, i * UNIT, ENV_W * UNIT, i * UNIT, fill='lightgray')
-            
-        # Create outer walls (thicker)
+                              height=ENV_H * UNIT,
+                              width=ENV_W * UNIT)
+        
+        # Create grid using vectorized operations
+        x_coords = np.arange(ENV_H) * UNIT
+        y_coords = np.arange(ENV_W) * UNIT
+        
+        # Create vertical lines
+        for x in x_coords:
+            self.canvas.create_line(x, 0, x, ENV_H * UNIT, fill='lightgray')
+        
+        # Create horizontal lines
+        for y in y_coords:
+            self.canvas.create_line(0, y, ENV_W * UNIT, y, fill='lightgray')
+        
+        # Create outer walls
         self.canvas.create_rectangle(0, 0, UNIT * ENV_W, UNIT * ENV_H, width=3)
 
         self.origin = np.array([halfUnit, halfUnit])
+        
+        # Initialize agents and targets
         for i in range(self.agentNum):
             self.tar_center[i] = self.origin + UNIT * np.random.rand(2) * (ENV_H - 1 + 0.01)
             self.targets.append(self.tar_center[i])
             self.agent_center[i] = self.origin + UNIT * np.random.rand(2) * (ENV_H - 1 + 0.01)
+            
+            # Create agent
             self.agent_all[i] = self.canvas.create_oval(
-                self.agent_center[i, 0] - self.agentSize, 
+                self.agent_center[i, 0] - self.agentSize,
                 self.agent_center[i, 1] - self.agentSize,
-                self.agent_center[i, 0] + self.agentSize, 
+                self.agent_center[i, 0] + self.agentSize,
                 self.agent_center[i, 1] + self.agentSize,
                 fill='blue')
+            
+            # Create target
             self.target_all[i] = self.canvas.create_rectangle(
-                self.tar_center[i, 0] - self.tarSize, 
+                self.tar_center[i, 0] - self.tarSize,
                 self.tar_center[i, 1] - self.tarSize,
-                self.tar_center[i, 0] + self.tarSize, 
+                self.tar_center[i, 0] + self.tarSize,
                 self.tar_center[i, 1] + self.tarSize,
                 fill='red')
+        
+        # Create obstacles
         for i in range(int(obsNum/2)):  # Square obstacles
             self.obs_center[i] = self.origin + UNIT * np.random.rand(2) * (ENV_H/2)
             self.obstacle_all[i] = self.canvas.create_rectangle(
-                self.obs_center[i, 0] - self.obsSize[i], 
+                self.obs_center[i, 0] - self.obsSize[i],
                 self.obs_center[i, 1] - self.obsSize[i],
-                self.obs_center[i, 0] + self.obsSize[i], 
+                self.obs_center[i, 0] + self.obsSize[i],
                 self.obs_center[i, 1] + self.obsSize[i],
                 fill='grey')
+        
         for i in range(int(obsNum/2), obsNum):  # Round obstacles
             self.obs_center[i] = self.origin + UNIT * np.random.rand(2) * (ENV_H/2)
             self.obstacle_all[i] = self.canvas.create_oval(
-                self.obs_center[i, 0] - self.obsSize[i], 
+                self.obs_center[i, 0] - self.obsSize[i],
                 self.obs_center[i, 1] - self.obsSize[i],
-                self.obs_center[i, 0] + self.obsSize[i], 
+                self.obs_center[i, 0] + self.obsSize[i],
                 self.obs_center[i, 1] + self.obsSize[i],
                 fill='grey')
+        
         self.canvas.pack()
 
-    def show_episode_info(self, episode, exploration_ratio):
-        """
-        Display episode information on the canvas.
+    def reset(self, agentPositionArray, tarPositionArray, obsArray, obsSize):
+        self.update()
+        self.grid_map = np.zeros((ENV_H, ENV_H), dtype=int)
+        self.canvas.delete("squares")
+        self.canvas.delete("founded_target")
+        self.current_step = 0
+        self.target_rewards_given = np.zeros(self.agentNum)
         
-        Args:
-            episode: Current episode number
-            exploration_ratio: Current exploration progress
-        """
-        # Clear previous info if exists
-        if hasattr(self, 'info_text'):
-            self.canvas.delete(self.info_text)
+        # Update statistics display
+        self.show_stats()
+
+        # Initialize arrays
+        sATAA = np.zeros((self.agentNum, 2 * (2 * self.agentNum - 1)))
+        agent_coordi = np.zeros((self.agentNum, 2))
+        tar_coordi = np.zeros((self.agentNum, 2))
+        self.founded_targets = np.zeros(self.agentNum)
         
-        # Show episode number and exploration ratio
-        self.info_text = self.canvas.create_text(
-            ENV_W * UNIT / 2, 10,
-            text=f'Episode: {episode} | Explored: {exploration_ratio:.1%}',
+        # Clear existing objects
+        for i in range(self.agentNum):
+            self.canvas.delete(self.agent_all[i])
+            self.canvas.delete(self.target_all[i])
+        for i in range(obsNum):
+            self.canvas.delete(self.obstacle_all[i])
+        
+        # Update positions
+        self.agentPositionArray = agentPositionArray
+        self.tarPositionArray = tarPositionArray
+        self.obsArray = obsArray
+        self.obsSize = obsSize * UNIT
+        
+        # Create new agents and targets
+        for i in range(self.agentNum):
+            self.tar_center[i] = self.origin + UNIT * self.tarPositionArray[i]
+            self.agent_center[i] = self.origin + UNIT * self.agentPositionArray[i]
+            
+            # Create target
+            self.target_all[i] = self.canvas.create_rectangle(
+                self.tar_center[i, 0] - self.tarSize,
+                self.tar_center[i, 1] - self.tarSize,
+                self.tar_center[i, 0] + self.tarSize,
+                self.tar_center[i, 1] + self.tarSize,
+                fill='red')
+            
+            # Create agent
+            self.agent_all[i] = self.canvas.create_oval(
+                self.agent_center[i, 0] - self.agentSize,
+                self.agent_center[i, 1] - self.agentSize,
+                self.agent_center[i, 0] + self.agentSize,
+                self.agent_center[i, 1] + self.agentSize,
+                fill='blue')
+        
+        # Create obstacles
+        for i in range(int(obsNum/2)):  # Square obstacles
+            self.obs_center[i] = self.origin + UNIT * self.obsArray[i]
+            self.obstacle_all[i] = self.canvas.create_rectangle(
+                self.obs_center[i, 0] - self.obsSize[i],
+                self.obs_center[i, 1] - self.obsSize[i],
+                self.obs_center[i, 0] + self.obsSize[i],
+                self.obs_center[i, 1] + self.obsSize[i],
+                fill='lightgrey', outline='lightgrey')
+        
+        for i in range(int(obsNum/2), obsNum):  # Round obstacles
+            self.obs_center[i] = self.origin + UNIT * self.obsArray[i]
+            self.obstacle_all[i] = self.canvas.create_oval(
+                self.obs_center[i, 0] - self.obsSize[i],
+                self.obs_center[i, 1] - self.obsSize[i],
+                self.obs_center[i, 0] + self.obsSize[i],
+                self.obs_center[i, 1] + self.obsSize[i],
+                fill='lightgrey', outline='lightgrey')
+        
+        # Calculate coordinates
+        for i in range(self.agentNum):
+            tar_coordi[i] = np.array(self.canvas.coords(self.target_all[i])[:2]) + np.array([self.tarSize, self.tarSize])
+            agent_coordi[i] = np.array(self.canvas.coords(self.agent_all[i])[:2]) + np.array([self.agentSize, self.agentSize])
+
+        # Vectorized calculation of distances
+        for i in range(self.agentNum):
+            # Calculate distances to all targets
+            sATAA[i, :2*self.agentNum] = (tar_coordi - agent_coordi[i]).flatten() / (ENV_H * UNIT)
+            
+            # Calculate distances to other agents
+            for j in range(self.agentNum):
+                if j > i:
+                    sATAA[i, 2*(self.agentNum + j - 1):2*(self.agentNum + j)] = (agent_coordi[j] - agent_coordi[i]) / (ENV_H * UNIT)
+                elif j < i:
+                    sATAA[i, 2*(self.agentNum + j):2*(self.agentNum + j)+2] = -sATAA[j, 2*(self.agentNum + i - 1):2*(self.agentNum + i)]
+        
+        return sATAA
+
+    def detect_obstacle(self, tarAgentDirCoordi, i, otherTarCoordi):
+        obstacleExist = 0
+        obstacleDistance = 1
+        
+        # Pre-calculate observation points
+        observe_distances = np.linspace(0, self.observeRange, self.observeTimes + 1)
+        observe_coords = np.outer(observe_distances, tarAgentDirCoordi)
+        
+        # Get agent coordinates
+        agent_coords = np.array(self.canvas.coords(self.agent_all[i]))
+        agent_center = np.array([(agent_coords[0] + agent_coords[2])/2, (agent_coords[1] + agent_coords[3])/2])
+        
+        # Check each observation point
+        for k, observe_coord in enumerate(observe_coords):
+            A_coordi = agent_center + observe_coord
+            
+            # Check square obstacles
+            for j in range(int(self.obsNum/2)):
+                Ob_coordi = self.canvas.coords(self.obstacle_all[j])
+                if not (A_coordi[0] + self.agentSize <= Ob_coordi[0] or
+                       A_coordi[0] - self.agentSize >= Ob_coordi[2] or
+                       A_coordi[1] + self.agentSize <= Ob_coordi[1] or
+                       A_coordi[1] - self.agentSize >= Ob_coordi[3]):
+                    obstacleExist = 1
+                    obstacleDistance = observe_distances[k] / self.observeRange
+                    return obstacleExist, obstacleDistance
+            
+            # Check round obstacles
+            for j in range(int(self.obsNum/2), self.obsNum):
+                Ob_coordi = np.array(self.canvas.coords(self.obstacle_all[j])[:2]) + self.obsSize[j]
+                if np.linalg.norm(Ob_coordi - A_coordi) <= (self.obsSize[j] + self.agentSize):
+                    obstacleExist = 1
+                    obstacleDistance = observe_distances[k] / self.observeRange
+                    return obstacleExist, obstacleDistance
+            
+            # Check other targets
+            if np.linalg.norm(otherTarCoordi) != 0:
+                if np.linalg.norm(otherTarCoordi + observe_coord) * UNIT <= (self.tarSize + self.agentSize):
+                    obstacleExist = 1
+                    obstacleDistance = observe_distances[k] / self.observeRange
+                    return obstacleExist, obstacleDistance
+        
+        return obstacleExist, obstacleDistance
+
+    def mark_detection_area(self, grid_matrix, agent_pos, observe_range, unit):
+        # Convert agent position to grid coordinates
+        agent_row, agent_col = int(agent_pos[1] // unit), int(agent_pos[0] // unit)
+        new_cells = 0
+        
+        # Fixed detection radius of 4 cells
+        detection_radius = 4
+        
+        # Create grid of coordinates to check
+        rows = np.arange(-detection_radius, detection_radius + 1)
+        cols = np.arange(-detection_radius, detection_radius + 1)
+        row_grid, col_grid = np.meshgrid(rows, cols)
+        
+        # Calculate Manhattan distances
+        manhattan_distances = np.abs(row_grid) + np.abs(col_grid)
+        valid_cells = manhattan_distances <= detection_radius
+        
+        # Get valid coordinates
+        valid_rows = agent_row + row_grid[valid_cells]
+        valid_cols = agent_col + col_grid[valid_cells]
+        
+        # Filter coordinates within grid bounds
+        valid_mask = (valid_rows >= 0) & (valid_rows < grid_matrix.shape[0]) & \
+                    (valid_cols >= 0) & (valid_cols < grid_matrix.shape[1])
+        
+        valid_rows = valid_rows[valid_mask]
+        valid_cols = valid_cols[valid_mask]
+        
+        # Update grid
+        for row, col in zip(valid_rows, valid_cols):
+            if grid_matrix[row, col] == 0:
+                new_cells += 1
+                grid_matrix[row, col] = 1
+        
+        return grid_matrix, new_cells
+
+    def detect_targets(self, grid_matrix, tar_pos, observe_range, unit):
+        tar_row, tar_col = int(tar_pos[1] // unit), int(tar_pos[0] // unit)
+        
+        # Check if target is within grid bounds
+        if not (0 <= tar_row < grid_matrix.shape[0] and 0 <= tar_col < grid_matrix.shape[1]):
+            return 0
+        
+        return int(grid_matrix[tar_row, tar_col] == 1)
+
+    def mark_target(self, grid_matrix, observe_range, unit):
+        check = 0
+        for idx in range(len(self.targets)):
+            tar_pos = self.targets[idx]
+            if self.detect_targets(grid_matrix, tar_pos, observe_range, unit) and self.founded_targets[idx] == 0:
+                self.canvas.create_rectangle(
+                    tar_pos[0] - self.tarSize,
+                    tar_pos[1] - self.tarSize,
+                    tar_pos[0] + self.tarSize,
+                    tar_pos[1] + self.tarSize,
+                    fill='pink',
+                    tags="founded_target")
+                self.founded_targets[idx] = 1
+                check = 1
+        return self.founded_targets, check
+
+    def step_ddpg(self, action):
+        return np.array([
+            np.sin(action) * self.stepLength,
+            -np.cos(action) * self.stepLength
+        ])
+
+    def step_dqn(self, action, observation, agentiDone):
+        if agentiDone != action + 1:
+            direction = observation[action*2:(action+1)*2]
+            norm = np.linalg.norm(direction)
+            if norm > 0:
+                return direction / norm * self.stepLengthFree
+        return np.zeros(2)
+
+    def show_stats(self):
+        """Display current statistics on the canvas"""
+        if hasattr(self, 'stats_text'):
+            self.canvas.delete(self.stats_text)
+        
+        exploration_ratio = np.sum(self.grid_map) / (ENV_H * ENV_W)
+        found_targets = np.sum(self.founded_targets)
+        
+        stats = f'Step: {self.current_step}/{self.MAX_EP_STEPS} | Explored: {exploration_ratio:.1%} | Found Targets: {found_targets}/{self.agentNum}'
+        
+        self.stats_text = self.canvas.create_text(
+            ENV_W * UNIT / 2, 20,
+            text=stats,
             fill='black',
             font=('Helvetica', 10, 'bold')
         )
+        self.canvas.tag_raise(self.stats_text)
 
     def draw_grid(self, grid_matrix, unit):
         """
@@ -128,255 +356,33 @@ class ENV(tk.Tk, object):
             grid_matrix: Matrix representing explored areas
             unit: Size of each grid cell
         """
-        for row in range(ENV_H):
-            for col in range(ENV_W):
-                if grid_matrix[row, col] == 1:  # If cell is explored
-                    x0, y0 = col * UNIT, row * UNIT
-                    x1, y1 = x0 + UNIT, y0 + UNIT
-                    self.canvas.create_rectangle(
-                        x0, y0, x1, y1, 
-                        fill="lightgreen", 
-                        width=0,
-                        tags="squares"
-                    )
-                    self.canvas.tag_lower("squares")  # Put explored area behind grid lines
-
-    def reset(self, agentPositionArray, tarPositionArray, obsArray, obsSize):
-        self.update()
-        self.grid_map = np.zeros((ENV_H, ENV_H),dtype=int)
+        # Clear previous grid visualization
         self.canvas.delete("squares")
-        self.canvas.delete("founded_target")
-        self.current_step = 0  # Reset step counter
-        self.target_rewards_given = np.zeros(self.agentNum)  # Reset target rewards tracking
         
-        # Update statistics display after reset
-        self.show_stats()
-
-        sATAA = np.zeros((self.agentNum, 2 * (2 * self.agentNum - 1)))
-        agent_coordi = np.zeros((self.agentNum, 2))
-        tar_coordi = np.zeros((self.agentNum, 2))
-        self.founded_targets = np.zeros(self.agentNum)
-        for i in range(self.agentNum):
-            self.canvas.delete(self.agent_all[i])
-            self.canvas.delete(self.target_all[i])
-        for i in range(obsNum):
-            self.canvas.delete(self.obstacle_all[i])
-        self.agentPositionArray = agentPositionArray
-        self.tarPositionArray = tarPositionArray
-        self.obsArray = obsArray
-        self.obsSize = obsSize * UNIT
-        for i in range(self.agentNum):
-            self.tar_center[i] = self.origin + UNIT * self.tarPositionArray[i]
-            # self.targets.append(self.tar_center[i])
-            self.agent_center[i] = self.origin + UNIT * self.agentPositionArray[i]
-            self.target_all[i] = self.canvas.create_rectangle(
-                self.tar_center[i, 0] - self.tarSize, self.tar_center[i, 1] - self.tarSize,
-                self.tar_center[i, 0] + self.tarSize, self.tar_center[i, 1] + self.tarSize,
-                fill='red')
-            self.agent_all[i] = self.canvas.create_oval(
-                self.agent_center[i, 0] - self.agentSize, self.agent_center[i, 1] - self.agentSize,
-                self.agent_center[i, 0] + self.agentSize, self.agent_center[i, 1] + self.agentSize,
-                fill='blue')
-        for i in range(int(obsNum/2)):  # Square obstacles
-            self.obs_center[i] = self.origin + UNIT * self.obsArray[i]
-            self.obstacle_all[i] = self.canvas.create_rectangle(
-                self.obs_center[i, 0] - self.obsSize[i], self.obs_center[i, 1] - self.obsSize[i],
-                self.obs_center[i, 0] + self.obsSize[i], self.obs_center[i, 1] + self.obsSize[i],
-                fill='lightgrey', outline='lightgrey')
-        for i in range(int(obsNum/2), obsNum):  # Round obstacles
-            self.obs_center[i] = self.origin + UNIT * self.obsArray[i]
-            self.obstacle_all[i] = self.canvas.create_oval(
-                self.obs_center[i, 0] - self.obsSize[i], self.obs_center[i, 1] - self.obsSize[i],
-                self.obs_center[i, 0] + self.obsSize[i], self.obs_center[i, 1] + self.obsSize[i],
-                fill='lightgrey', outline='lightgrey')
-        for i in range(self.agentNum):
-            tar_coordi[i] = np.array(self.canvas.coords(self.target_all[i])[:2]) + np.array([self.tarSize, self.tarSize])
-            agent_coordi[i] = np.array(self.canvas.coords(self.agent_all[i])[:2]) + np.array([self.agentSize, self.agentSize])
-
-        for i in range(self.agentNum):
-            for k in range(self.agentNum):  # distances between agents and targets
-                sATAA[i, 2*k: 2*(k+1)] = (tar_coordi[k] - agent_coordi[i]) / (ENV_H * UNIT)
-            for j in range(self.agentNum):
-                if j > i:
-                    sATAA[i, 2*(self.agentNum + j - 1): 2*(self.agentNum + j)] = (agent_coordi[j] - agent_coordi[i]) / (ENV_H * UNIT)
-                elif j < i:
-                    sATAA[i, 2*(self.agentNum + j): 2*(self.agentNum + j)+2] = - sATAA[j, 2*(self.agentNum + i - 1): 2*(self.agentNum + i)]
-        return sATAA
-
-    def detect_obstacle(self, tarAgentDirCoordi, i, otherTarCoordi):
-        obstacleExist = 0
-        obstacleDistance = 1
-        for k in range(self.observeTimes + 1):
-            observeDistance = k / self.observeTimes * self.observeRange
-            observeCoordi = observeDistance * tarAgentDirCoordi
-            A_coordi = self.canvas.coords(self.agent_all[i]) + UNIT * np.hstack((np.hstack(observeCoordi), np.hstack(observeCoordi)))
-            for j in range(0, obsNum+1):
-                if j < int(obsNum/2):  # Detecting square obstacles
-                    Ob_coordi = self.canvas.coords(self.obstacle_all[j])
-                    agentNonObstacle = A_coordi[2] <= Ob_coordi[0] or A_coordi[0] >= Ob_coordi[2] or A_coordi[3] <= Ob_coordi[1] or A_coordi[1] >= Ob_coordi[3]
-                    if agentNonObstacle == 0:
-                        obstacleExist = 1
-                        obstacleDistance = observeDistance / self.observeRange
-                        break
-                elif j < obsNum:  # Detecting round obstacles
-                    Ob_coordi = self.canvas.coords(self.obstacle_all[j])
-                    agentNonObstacle = np.linalg.norm(Ob_coordi[:2]+self.obsSize[j]-A_coordi[:2]-self.agentSize) > (self.obsSize[j] + self.agentSize)
-                    if agentNonObstacle == 0:
-                        obstacleExist = 1
-                        obstacleDistance = observeDistance / self.observeRange
-                        break
-                elif j == obsNum:  # Detecting targets
-                    if np.linalg.norm(otherTarCoordi) != 0:
-                        agentNonObstacle = np.linalg.norm(otherTarCoordi + observeCoordi)*UNIT > (self.tarSize + self.agentSize)
-                        if agentNonObstacle == 0:
-                            obstacleExist = 1
-                            obstacleDistance = observeDistance / self.observeRange
-                            break
-            if agentNonObstacle == 0:
-                break
-        return obstacleExist, obstacleDistance
-
-    def mark_detection_area(self,grid_matrix, agent_pos, observe_range, unit):
-        # Chuyển đổi tọa độ tác nhân sang tọa độ ô lưới
-        agent_row, agent_col = int(agent_pos[1] // unit), int(agent_pos[0] // unit)
-        new_cells = 0
-
-        # Bán kính phát hiện cố định là 4 ô
-        detection_radius = 4
-
-        # Duyệt qua các ô nằm trong phạm vi bán kính Manhattan
-        for r in range(-detection_radius, detection_radius + 1):
-            for c in range(-detection_radius, detection_radius + 1):
-                # Tính tọa độ lưới của ô hiện tại
-                row = agent_row + r
-                col = agent_col + c
-
-                # Kiểm tra xem ô có nằm trong lưới không
-                if 0 <= row < grid_matrix.shape[0] and 0 <= col < grid_matrix.shape[1]:
-                    # Kiểm tra ô có nằm trong vùng phát hiện sử dụng khoảng cách Manhattan
-                    manhattan_distance = abs(r) + abs(c)
-                    if manhattan_distance <= detection_radius:
-                        if grid_matrix[row, col] == 0:
-                            new_cells += 1
-                            grid_matrix[row, col] = 1 # Đánh dấu vùng phát hiện bằng giá trị 1
-        return grid_matrix, new_cells
-
-    def detect_targets(self,grid_matrix,tar_pos,observe_range,unit):
-        tar_row, tar_col = int(tar_pos[1] // unit), int(tar_pos[0] // unit)
-
-        # Nếu ô của target nằm ngoài lưới thì trả về False
-        if tar_row < 0 or tar_row >= grid_matrix.shape[0] or tar_col < 0 or tar_col >= grid_matrix.shape[1]:
-            return 0
-
-        # Kiểm tra giá trị của ô trong grid_map
-        if grid_matrix[tar_row, tar_col] == 1:
-            return 1
-        else:
-            return 0
-
-    def mark_target(self, grid_matrix, observe_range, unit):
-        check = 0
-        for idx in range(len(self.targets)):
-            tar_pos = self.targets[idx]
-            if self.detect_targets(grid_matrix, tar_pos, observe_range, unit) and self.founded_targets[idx] == 0:
-                self.canvas.create_rectangle(
-                    tar_pos[0] - self.tarSize, tar_pos[1] - self.tarSize,
-                    tar_pos[0] + self.tarSize, tar_pos[1] + self.tarSize,
-                    fill='pink',tags= "founded_target")
-                self.founded_targets[idx] = 1
-                check = 1
-        return self.founded_targets, check
-
-    def step_ddpg(self, action):
-        base_actionA = np.array([0.0, 0.0])
-        base_actionA[0] += np.sin(action) * self.stepLength
-        base_actionA[1] -= np.cos(action) * self.stepLength
-        return base_actionA[0], base_actionA[1]
-
-    def step_dqn(self, action, observation, agentiDone):
-        base_actionA = np.array([0.0, 0.0])
-        if agentiDone != action + 1:
-            base_actionA += observation[action*2: (action+1)*2]/np.linalg.norm(observation[action*2:(action+1)*2])*self.stepLengthFree
-        return base_actionA[0], base_actionA[1]
-
-    def show_stats(self):
-        """Display current statistics on the canvas"""
-        # Clear previous stats if they exist
-        if hasattr(self, 'stats_text'):
-            self.canvas.delete(self.stats_text)
+        # Get coordinates of explored cells
+        explored_cells = np.where(grid_matrix == 1)
+        rows, cols = explored_cells
         
-        # Calculate exploration ratio
-        exploration_ratio = np.sum(self.grid_map) / (ENV_H * ENV_W)
+        # Draw explored cells
+        for row, col in zip(rows, cols):
+            x0, y0 = col * UNIT, row * UNIT
+            x1, y1 = x0 + UNIT, y0 + UNIT
+            self.canvas.create_rectangle(
+                x0, y0, x1, y1, 
+                fill="lightgreen", 
+                width=0,
+                tags="squares"
+            )
         
-        # Calculate number of found targets
-        found_targets = np.sum(self.founded_targets)
-        
-        # Create stats text
-        stats = f'Step: {self.current_step}/{self.MAX_EP_STEPS} | Explored: {exploration_ratio:.1%} | Found Targets: {found_targets}/{self.agentNum}'
-        
-        # Display stats at the top of the canvas
-        self.stats_text = self.canvas.create_text(
-            ENV_W * UNIT / 2, 20,  # Position at top center
-            text=stats,
-            fill='black',
-            font=('Helvetica', 10, 'bold')
-        )
-        # Make sure stats are always on top
-        self.canvas.tag_raise(self.stats_text)
-
-    def log_episode_stats(self, episode, total_reward, success, collision_agent, collision_obs, conflict):
-        """
-        Log episode statistics to a file and display summary.
-        
-        Args:
-            episode (int): Current episode number
-            total_reward (float): Total reward for the episode
-            success (int): Whether all targets were found
-            collision_agent (int): Number of agent collisions
-            collision_obs (int): Number of obstacle collisions
-            conflict (int): Number of conflicts
-        """
-        # Calculate final statistics
-        exploration_ratio = np.sum(self.grid_map) / (ENV_H * ENV_W)
-        found_targets = np.sum(self.founded_targets)
-        
-        # Create log entry
-        log_entry = {
-            'episode': episode,
-            'steps': self.current_step,
-            'total_reward': total_reward,
-            'exploration_ratio': exploration_ratio,
-            'found_targets': found_targets,
-            'success': success,
-            'collision_agent': collision_agent,
-            'collision_obs': collision_obs,
-            'conflict': conflict
-        }
-        
-        # Write to log file
-        with open('episode_logs.csv', 'a') as f:
-            if episode == 1:  # Write header for first episode
-                f.write(','.join(log_entry.keys()) + '\n')
-            f.write(','.join(str(v) for v in log_entry.values()) + '\n')
-        
-        # Display episode summary
-        print(f"\nEpisode {episode} Summary:")
-        print(f"Steps taken: {self.current_step}")
-        print(f"Total reward: {total_reward:.2f}")
-        print(f"Exploration ratio: {exploration_ratio:.2%}")
-        print(f"Found targets: {found_targets}/{self.agentNum}")
-        print(f"Success: {'Yes' if success else 'No'}")
-        print(f"Agent collisions: {collision_agent}")
-        print(f"Obstacle collisions: {collision_obs}")
-        print(f"Conflicts: {conflict}")
-        print("-" * 50)
+        # Put explored area behind grid lines
+        self.canvas.tag_lower("squares")
 
     def move(self, move, agentExistObstacle_Target, otherTarCoordi, action, action_h, drawTrajectory):
         # Initialize arrays
         done_collision_cross = np.zeros(self.agentNum)
         done_collision_agent = 0
         done_collision_obs = 0
-        done_collision_wall = 0  # Add wall collision counter
+        done_collision_wall = 0
         success = 0
         arriveSame = 0
         done = np.zeros(self.agentNum)
@@ -388,11 +394,9 @@ class ENV(tk.Tk, object):
 
         # Update step counter
         self.current_step += 1
-
-        # Update statistics display
         self.show_stats()
 
-        # Pre-calculate all coordinates once
+        # Pre-calculate all coordinates
         agent_coords = np.array([self.canvas.coords(agent) for agent in self.agent_all])
         agent_centers = np.column_stack((
             (agent_coords[:, 0] + agent_coords[:, 2]) / 2,
@@ -400,101 +404,82 @@ class ENV(tk.Tk, object):
         ))
         
         # Check if agents are staying in the same position
-        for i in range(self.agentNum):
-            if np.array_equal(agent_centers[i], self.prev_positions[i]):
-                reward[i] -= 0.5  # Penalty for staying in the same position
+        same_position = np.all(agent_centers == self.prev_positions, axis=1)
+        reward[same_position] -= 0.5
         
         # Update previous positions
         self.prev_positions = agent_centers.copy()
         
-        tar_coords = np.array([self.canvas.coords(target) for target in self.target_all])
-        tar_centers = np.column_stack((
-            (tar_coords[:, 0] + tar_coords[:, 2]) / 2 + self.tarSize,
-            (tar_coords[:, 1] + tar_coords[:, 3]) / 2 + self.tarSize
-        ))
-
-        # Pre-calculate obstacle coordinates and types
-        obs_coords = np.array([self.canvas.coords(obs) for obs in self.obstacle_all])
-        obs_centers = np.column_stack((
-            (obs_coords[:, 0] + obs_coords[:, 2]) / 2,
-            (obs_coords[:, 1] + obs_coords[:, 3]) / 2
-        ))
-        square_obs_mask = np.arange(obsNum) < int(obsNum/2)
-        round_obs_mask = ~square_obs_mask
-
-        # Calculate new positions for all agents at once
+        # Calculate new positions
         new_positions = agent_centers + move
-        new_grid_positions = new_positions / UNIT
-
-        # Check wall collisions for all agents at once
-        # Consider agent size when checking wall collisions
+        
+        # Check wall collisions
         wall_collision = (
-            (new_positions[:, 0] - self.agentSize <= 0) | 
+            (new_positions[:, 0] - self.agentSize <= 0) |
             (new_positions[:, 0] + self.agentSize >= ENV_W * UNIT) |
-            (new_positions[:, 1] - self.agentSize <= 0) | 
+            (new_positions[:, 1] - self.agentSize <= 0) |
             (new_positions[:, 1] + self.agentSize >= ENV_H * UNIT)
         )
-        move[wall_collision] = [0, 0]
+        
+        # Handle wall collisions
+        move[wall_collision] = 0
         reward[wall_collision] -= 1.0
-        done_collision_wall = np.sum(wall_collision)  # Count wall collisions
+        done_collision_wall = np.sum(wall_collision)
 
-        # Process each agent for obstacle collisions and exploration
+        # Process each agent
         for i in range(self.agentNum):
             if wall_collision[i]:
                 continue
 
-            new_x, new_y = new_positions[i]
+            new_pos = new_positions[i]
             new_agent_coords = [
-                new_x - self.agentSize,
-                new_y - self.agentSize,
-                new_x + self.agentSize,
-                new_y + self.agentSize
+                new_pos[0] - self.agentSize,
+                new_pos[1] - self.agentSize,
+                new_pos[0] + self.agentSize,
+                new_pos[1] + self.agentSize
             ]
 
-            # Check square obstacles using vectorized operations
-            square_obs_coords = obs_coords[square_obs_mask]
+            # Check square obstacles
+            square_obs_coords = np.array([self.canvas.coords(obs) for obs in self.obstacle_all[:int(self.obsNum/2)]])
             square_collisions = ~(
                 (new_agent_coords[2] <= square_obs_coords[:, 0]) |
                 (new_agent_coords[0] >= square_obs_coords[:, 2]) |
                 (new_agent_coords[3] <= square_obs_coords[:, 1]) |
                 (new_agent_coords[1] >= square_obs_coords[:, 3])
             )
+            
             if np.any(square_collisions):
-                move[i] = [0, 0]
+                move[i] = 0
                 reward[i] -= 1.0
                 done_collision_obs += 1
                 continue
 
-            # Check round obstacles using vectorized distance calculation
-            round_obs_centers = obs_centers[round_obs_mask]
-            round_obs_sizes = self.obsSize[round_obs_mask]
-            distances = np.sqrt(
-                (new_x - round_obs_centers[:, 0])**2 + 
-                (new_y - round_obs_centers[:, 1])**2
-            )
-            if np.any(distances < (self.agentSize + round_obs_sizes)):
-                move[i] = [0, 0]
+            # Check round obstacles
+            round_obs_coords = np.array([self.canvas.coords(obs) for obs in self.obstacle_all[int(self.obsNum/2):]])
+            round_obs_centers = np.column_stack((
+                (round_obs_coords[:, 0] + round_obs_coords[:, 2]) / 2,
+                (round_obs_coords[:, 1] + round_obs_coords[:, 3]) / 2
+            ))
+            
+            distances = np.linalg.norm(new_pos - round_obs_centers, axis=1)
+            if np.any(distances < (self.agentSize + self.obsSize[int(self.obsNum/2):])):
+                move[i] = 0
                 reward[i] -= 1.0
                 done_collision_obs += 1
                 continue
 
-            # Check collisions with other agents
-            for j in range(self.agentNum):
-                if i != j:  # Don't check collision with self
-                    other_agent_center = agent_centers[j]
-                    distance = np.sqrt(
-                        (new_x - other_agent_center[0])**2 + 
-                        (new_y - other_agent_center[1])**2
-                    )
-                    if distance < (2 * self.agentSize):  # If distance is less than sum of agent sizes
-                        move[i] = [0, 0]
-                        reward[i] -= 1.0  # Penalty for agent collision
-                        reward[j] -= 1.0  # Penalty for the other agent too
-                        done_collision_agent += 1
-                        break
+            # Check agent collisions
+            other_agents = np.delete(agent_centers, i, axis=0)
+            distances = np.linalg.norm(new_pos - other_agents, axis=1)
+            if np.any(distances < (2 * self.agentSize)):
+                move[i] = 0
+                reward[i] -= 1.0
+                reward[np.where(distances < (2 * self.agentSize))[0] + (i if i == 0 else 0)] -= 1.0
+                done_collision_agent += 1
+                continue
 
             # Update exploration
-            agent_center = (int(new_x), int(new_y))
+            agent_center = (int(new_pos[0]), int(new_pos[1]))
             self.grid_map, new_cells = self.mark_detection_area(self.grid_map, agent_center, self.observeRange, UNIT)
             new_cell_reward = (new_cells*100)/(ENV_H*ENV_W)
             self.new_cell_point[i].append(new_cell_reward)
@@ -507,22 +492,28 @@ class ENV(tk.Tk, object):
             # Move agent
             self.canvas.move(self.agent_all[i], move[i, 0], move[i, 1])
 
-        # Update grid visualization once
+        # Update grid visualization
         self.draw_grid(self.grid_map, UNIT)
         self.canvas.tag_lower("squares")
 
-        # Calculate sATAA using vectorized operations
+        # Calculate new coordinates
         agent_coords = np.array([self.canvas.coords(agent) for agent in self.agent_all])
         agent_centers = np.column_stack((
             (agent_coords[:, 0] + agent_coords[:, 2]) / 2 + self.agentSize,
             (agent_coords[:, 1] + agent_coords[:, 3]) / 2 + self.agentSize
         ))
 
-        # Vectorized calculation of distances between agents and targets
+        # Calculate distances to targets and other agents
+        tar_coords = np.array([self.canvas.coords(target) for target in self.target_all])
+        tar_centers = np.column_stack((
+            (tar_coords[:, 0] + tar_coords[:, 2]) / 2 + self.tarSize,
+            (tar_coords[:, 1] + tar_coords[:, 3]) / 2 + self.tarSize
+        ))
+
+        # Vectorized calculation of sATAA
         for i in range(self.agentNum):
             # Calculate distances to all targets
-            for k in range(self.agentNum):
-                sATAA[i, 2*k:2*(k+1)] = (tar_centers[k] - agent_centers[i]) / (ENV_H * UNIT)
+            sATAA[i, :2*self.agentNum] = (tar_centers - agent_centers[i]).flatten() / (ENV_H * UNIT)
             
             # Calculate distances to other agents
             for j in range(self.agentNum):
@@ -531,24 +522,19 @@ class ENV(tk.Tk, object):
                 elif j < i:
                     sATAA[i, 2*(self.agentNum + j):2*(self.agentNum + j)+2] = -sATAA[j, 2*(self.agentNum + i - 1):2*(self.agentNum + i)]
 
-        # Check if agents reached their targets using vectorized operations
+        # Check if agents reached their targets
         target_distances = np.linalg.norm(agent_centers - tar_centers[action], axis=1)
         reached_targets = target_distances < self.stepLengthFree
-        
-        # Update agentDone for agents that reached their targets
-        for i in range(self.agentNum):
-            if reached_targets[i]:
-                agentDone[i] = action[i] + 1
+        agentDone[reached_targets] = action[reached_targets] + 1
 
-        # Check if 3 targets are found
+        # Check success conditions
         found_targets_count = np.sum(self.founded_targets)
         if found_targets_count >= 3:
             success = 1
             done = np.ones(self.agentNum)
-            # Calculate bonus reward based on steps taken
             step_ratio = 1 - (self.current_step / self.MAX_EP_STEPS)
-            bonus_reward = 500 * step_ratio  # Base bonus of 500, scaled by remaining steps
-            reward += bonus_reward  # Add bonus to all agents
+            bonus_reward = 500 * step_ratio
+            reward += bonus_reward
         elif np.sum(agentDone > 0) == self.agentNum:
             success = 1
             done = np.ones(self.agentNum)
@@ -570,7 +556,7 @@ class ENV(tk.Tk, object):
         # Add movement reward
         reward += 0.1
 
-        # Calculate exploration ratio once
+        # Calculate exploration ratio
         exploration_ratio = np.sum(self.grid_map) / (ENV_H * ENV_W)
         
         # Apply exploration multipliers
@@ -583,7 +569,7 @@ class ENV(tk.Tk, object):
             success = 1
             done = np.ones(self.agentNum)
 
-        # Calculate final agent positions
+        # Calculate final positions
         agentNewPosition = agent_centers / UNIT - self.origin / UNIT
 
         return sATAA, reward, done, agentDone, done_collision_cross, done_collision_agent, done_collision_obs, success, arriveSame, agentNewPosition, done_collision_wall
