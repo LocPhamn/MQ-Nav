@@ -48,3 +48,6 @@ __Ver1.2.5__
 Tối ưu hóa hiệu suất chạy
 dùng lệnh sau
 python main.py --agent_num=3 --mode=train --pretrain_path=./pretrain --save_path=./result --render=False
+
+__Ver1.2.6__
+Chỉnh reward để thưởng nhiều hơn khi tìm thấy tất cả target sớm hơn

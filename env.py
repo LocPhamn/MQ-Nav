@@ -532,12 +532,17 @@ class ENV(tk.Tk, object):
         if found_targets_count >= 3:
             success = 1
             done = np.ones(self.agentNum)
-            step_ratio = 1 - (self.current_step / self.MAX_EP_STEPS)
-            bonus_reward = 500 * step_ratio
+            remaining_steps = self.MAX_EP_STEPS - self.current_step
+            step_ratio = remaining_steps / self.MAX_EP_STEPS
+            bonus_reward = 1000 * step_ratio  # Increased base bonus
             reward += bonus_reward
         elif np.sum(agentDone > 0) == self.agentNum:
             success = 1
             done = np.ones(self.agentNum)
+            remaining_steps = self.MAX_EP_STEPS - self.current_step
+            step_ratio = remaining_steps / self.MAX_EP_STEPS
+            bonus_reward = 2000 * step_ratio  # Even larger bonus for finding all targets
+            reward += bonus_reward
 
         # Calculate rewards
         for i in searcher:
