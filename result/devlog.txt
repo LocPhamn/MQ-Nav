@@ -61,3 +61,10 @@ Bỏ multiply khám phá
 __Ver1.2.9__
 Thêm lại multiply khám phá
 giá trị này auto max khi tìm thấy 3 target
+
+__Ver1.3.0__
+Chỉnh giá trị bù thưởng dựa trên ep trước
+Tăng giá trị phạt cho các penalty
+phạt khi vùng phát hiện chồng lấn
+
+test reward

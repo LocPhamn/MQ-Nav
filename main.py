@@ -77,6 +77,7 @@ collisionNum_list = []
 success_num = 0
 successNum_list = []
 found_targets_num = 0
+found_targets_list = []  # Add list to store targets found per episode
 
 # Performance optimization
 BATCH_SIZE = 128  # Increased batch size
@@ -166,6 +167,7 @@ for ep in range(ep_num):
         collision_wall_num += collision_wall
         success_num += success
         found_targets_num += np.sum(env.founded_targets)
+        found_targets_list.append(np.sum(env.founded_targets))  # Store targets found in this episode
         temp_rewardSum += min(ep_reward)
 
         # Update history
@@ -240,7 +242,8 @@ for ep in range(ep_num):
             timeCostSum_temp += ep_timeCost
             
             # Display per-episode statistics
-            print(f"\nEpisode {episode} | Steps: {ep_timeCost} | Reward: {np.around(min(ep_reward), decimals=3)} | Success: {'Yes' if success else 'No'} | Found Targets: {np.sum(env.founded_targets)}/{env.agentNum} | Agent Collisions: {ep_collision_agent} | Obstacle Collisions: {ep_collision_obs} | Wall Collisions: {ep_collision_wall}")
+            exploration_ratio = np.sum(env.grid_map) / (env.ENV_H * env.ENV_H)
+            print(f"\nEpisode {episode} | Steps: {ep_timeCost} | Reward: {np.around(min(ep_reward), decimals=3)} | Success: {'Yes' if success else 'No'} | Found Targets: {np.sum(env.founded_targets)}/{env.agentNum} | Explored: {exploration_ratio:.1%} | Agent Collisions: {ep_collision_agent} | Obstacle Collisions: {ep_collision_obs} | Wall Collisions: {ep_collision_wall}")
             break
 
     # Display statistics every 100 episodes during training
@@ -248,7 +251,9 @@ for ep in range(ep_num):
         print("\n" + "="*100)
         print(f"Training Statistics - Episode {episode}")
         print("="*100)
-        print(f"Success Rate: {success_num/100:.2%} | Avg Targets: {found_targets_num/100:.2f} | Avg Agent Collisions: {collision_num/100:.2f} | Avg Obstacle Collisions: {collision_obs_num/100:.2f} | Avg Wall Collisions: {collision_wall_num/100:.2f} | Avg Reward: {temp_rewardSum/100:.2f}", end='')
+        avg_exploration = np.sum(env.grid_map) / (env.ENV_H * env.ENV_H)
+        avg_targets = np.mean(found_targets_list[-100:])  # Calculate average of last 100 episodes
+        print(f"Success Rate: {success_num/100:.2%} | Avg Targets: {avg_targets:.2f} | Avg Exploration: {avg_exploration:.1%} | Avg Agent Collisions: {collision_num/100:.2f} | Avg Obstacle Collisions: {collision_obs_num/100:.2f} | Avg Wall Collisions: {collision_wall_num/100:.2f} | Avg Reward: {temp_rewardSum/100:.2f}", end='')
         if success_num >= 3:
             mean_time = timeCostSum_temp / success_num
             print(f" | Avg Steps to Success: {mean_time:.2f}")

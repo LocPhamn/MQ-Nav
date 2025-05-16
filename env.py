@@ -51,6 +51,15 @@ class ENV(tk.Tk, object):
         self.founded_targets = np.zeros(agentNum)
         self.target_rewards_given = np.zeros(agentNum)
         
+        # Add exploration bonus tracking
+        self.exploration_50_75_given = False
+        self.exploration_75_100_given = False
+        self.exploration_100_given = False
+        
+        # Track total cells and explored cells
+        self.total_cells = ENV_H * ENV_H
+        self.explored_cells = 0
+        
         # Pre-compute detection angles
         self.detection_angles = np.array([(i+1) * np.pi / 6 for i in range(3)])
         self.detection_angles = np.concatenate([self.detection_angles, -self.detection_angles])
@@ -129,6 +138,12 @@ class ENV(tk.Tk, object):
         self.canvas.delete("founded_target")
         self.current_step = 0
         self.target_rewards_given = np.zeros(self.agentNum)
+        
+        # Reset exploration tracking
+        self.exploration_50_75_given = False
+        self.exploration_75_100_given = False
+        self.exploration_100_given = False
+        self.explored_cells = 0
         
         # Update statistics display
         self.show_stats()
@@ -283,11 +298,12 @@ class ENV(tk.Tk, object):
         valid_rows = valid_rows[valid_mask]
         valid_cols = valid_cols[valid_mask]
         
-        # Update grid
+        # Update grid and count new cells
         for row, col in zip(valid_rows, valid_cols):
             if grid_matrix[row, col] == 0:
                 new_cells += 1
                 grid_matrix[row, col] = 1
+                self.explored_cells += 1
         
         return grid_matrix, new_cells
 
@@ -335,7 +351,7 @@ class ENV(tk.Tk, object):
         if hasattr(self, 'stats_text'):
             self.canvas.delete(self.stats_text)
         
-        exploration_ratio = np.sum(self.grid_map) / (ENV_H * ENV_W)
+        exploration_ratio = self.explored_cells / self.total_cells
         found_targets = np.sum(self.founded_targets)
         
         stats = f'Step: {self.current_step}/{self.MAX_EP_STEPS} | Explored: {exploration_ratio:.1%} | Found Targets: {found_targets}/{self.agentNum}'
@@ -405,7 +421,7 @@ class ENV(tk.Tk, object):
         
         # Check if agents are staying in the same position
         same_position = np.all(agent_centers == self.prev_positions, axis=1)
-        reward[same_position] -= 0.5
+        reward[same_position] -= 5
         
         # Update previous positions
         self.prev_positions = agent_centers.copy()
@@ -423,7 +439,7 @@ class ENV(tk.Tk, object):
         
         # Handle wall collisions
         move[wall_collision] = 0
-        reward[wall_collision] -= 1.0
+        reward[wall_collision] -= 5.0  # Increased wall collision penalty
         done_collision_wall = np.sum(wall_collision)
 
         # Process each agent
@@ -450,7 +466,7 @@ class ENV(tk.Tk, object):
             
             if np.any(square_collisions):
                 move[i] = 0
-                reward[i] -= 1.0
+                reward[i] -= 5.0  # Increased obstacle collision penalty
                 done_collision_obs += 1
                 continue
 
@@ -464,7 +480,7 @@ class ENV(tk.Tk, object):
             distances = np.linalg.norm(new_pos - round_obs_centers, axis=1)
             if np.any(distances < (self.agentSize + self.obsSize[int(self.obsNum/2):])):
                 move[i] = 0
-                reward[i] -= 1.0
+                reward[i] -= 5.0  # Increased obstacle collision penalty
                 done_collision_obs += 1
                 continue
 
@@ -473,16 +489,30 @@ class ENV(tk.Tk, object):
             distances = np.linalg.norm(new_pos - other_agents, axis=1)
             if np.any(distances < (2 * self.agentSize)):
                 move[i] = 0
-                reward[i] -= 1.0
-                reward[np.where(distances < (2 * self.agentSize))[0] + (i if i == 0 else 0)] -= 1.0
+                reward[i] -= 5.0  # Increased agent collision penalty
+                reward[np.where(distances < (2 * self.agentSize))[0] + (i if i == 0 else 0)] -= 5.0  # Increased agent collision penalty
                 done_collision_agent += 1
                 continue
 
             # Update exploration
             agent_center = (int(new_pos[0]), int(new_pos[1]))
             self.grid_map, new_cells = self.mark_detection_area(self.grid_map, agent_center, self.observeRange, UNIT)
-            new_cell_reward = (new_cells*100)/(ENV_H*ENV_W)
-            self.new_cell_point[i].append(new_cell_reward)
+            remaining_cells = self.total_cells - self.explored_cells
+            if remaining_cells > 0:
+                new_cell_reward = (new_cells * 100) / remaining_cells
+            else:
+                new_cell_reward = 0
+            reward[i] += new_cell_reward  # Add exploration reward directly
+
+            # Check for overlapping search areas with other agents
+            for j in range(self.agentNum):
+                if j != i:
+                    other_agent_center = (int(agent_centers[j, 0]), int(agent_centers[j, 1]))
+                    distance = np.linalg.norm(np.array(agent_center) - np.array(other_agent_center))
+                    if distance < self.observeRange * UNIT * 2:  # If search areas overlap
+                        overlap_penalty = -2.0 * (1 - distance/(self.observeRange * UNIT * 2))  # Fixed penalty calculation
+                        reward[i] += overlap_penalty
+                        reward[j] += overlap_penalty
 
             # Check target detection
             founded_targets_move, check = self.mark_target(self.grid_map, self.observeRange, UNIT)
@@ -529,60 +559,43 @@ class ENV(tk.Tk, object):
 
         # Check success conditions
         found_targets_count = np.sum(self.founded_targets)
+        
+        # Calculate exploration ratio
+        exploration_ratio = self.explored_cells / self.total_cells
+        
+        # Apply exploration bonuses
+        if not self.exploration_50_75_given and exploration_ratio >= 0.5 and exploration_ratio < 0.75:
+            reward += 50  # Reduced from 100 to better balance with other rewards
+            self.exploration_50_75_given = True
+        elif not self.exploration_75_100_given and exploration_ratio >= 0.75 and exploration_ratio < 1.0:
+            reward += 100  # Reduced from 200
+            self.exploration_75_100_given = True
+        elif not self.exploration_100_given and exploration_ratio == 1.0:
+            reward += 200  # Reduced from 500
+            self.exploration_100_given = True
+            success = 1
+            done = np.ones(self.agentNum)
+
+        # Calculate rewards for target finding
+        for i in searcher:
+            if not self.target_rewards_given[i]:
+                reward[i] += 100  # Reduced from 200 to better balance with exploration
+                self.target_rewards_given[i] = 1
+
+        # Add completion bonus
         if found_targets_count >= self.agentNum:
             success = 1
             done = np.ones(self.agentNum)
             remaining_steps = self.MAX_EP_STEPS - self.current_step
-            # Estimate positive rewards from remaining steps (exploration + target finding)
-            exploration_reward = remaining_steps * 0.1  # Base movement reward per step
-            target_reward = remaining_steps * 200  # Potential target finding reward
-            step_compensation = exploration_reward + target_reward  # Compensate for missed positive rewards
-            additional_bonus = 2000 * remaining_steps  # Additional bonus for early completion
-            bonus_reward = step_compensation + additional_bonus
-            reward += bonus_reward
-        elif np.sum(agentDone > 0) == self.agentNum:
-            success = 1
-            done = np.ones(self.agentNum)
-            remaining_steps = self.MAX_EP_STEPS - self.current_step
-            # Estimate positive rewards from remaining steps (exploration + target finding)
-            exploration_reward = remaining_steps * 0.1  # Base movement reward per step
-            target_reward = remaining_steps * 200  # Potential target finding reward
-            step_compensation = exploration_reward + target_reward  # Compensate for missed positive rewards
-            additional_bonus = 2000 * remaining_steps  # Additional bonus for early completion
-            bonus_reward = step_compensation + additional_bonus
+            bonus_reward = 200 * remaining_steps / self.MAX_EP_STEPS  # Reduced from 500
             reward += bonus_reward
 
-        # Calculate rewards
-        for i in searcher:
-            if not self.target_rewards_given[i]:
-                reward[i] += 200
-                self.target_rewards_given[i] = 1
-
-        # Add time penalty
-        time_penalty = -0.5 * (self.current_step / self.MAX_EP_STEPS)
+        # Add time penalty (adjusted to be less severe)
+        time_penalty = -0.2 * (self.current_step / self.MAX_EP_STEPS)  # Reduced from -0.5
         reward += time_penalty
 
-        # Add exploration rewards
-        for i in range(self.agentNum):
-            reward[i] += sum(self.new_cell_point[i])
-
-        # Add movement reward
-        reward += 0.1
-
-        # Calculate exploration ratio
-        exploration_ratio = np.sum(self.grid_map) / (ENV_H * ENV_W)
-        
-        # Apply exploration multipliers
-        if found_targets_count >= self.agentNum:  # When all targets are found
-            reward *= 2.0
-        elif exploration_ratio >= 0.5 and exploration_ratio < 0.75:
-            reward *= 1.2
-        elif exploration_ratio >= 0.75 and exploration_ratio < 1.0:
-            reward *= 1.5
-        elif exploration_ratio == 1.0:
-            reward *= 2.0
-            success = 1
-            done = np.ones(self.agentNum)
+        # Add movement reward (slightly increased)
+        reward += 0.2  # Increased from 0.1
 
         # Calculate final positions
         agentNewPosition = agent_centers / UNIT - self.origin / UNIT
