@@ -439,7 +439,7 @@ class ENV(tk.Tk, object):
         
         # Handle wall collisions
         move[wall_collision] = 0
-        reward[wall_collision] -= 5.0  # Increased wall collision penalty
+        reward[wall_collision] -= 10.0  # Increased wall collision penalty from -5.0 to -10.0
         done_collision_wall = np.sum(wall_collision)
 
         # Process each agent

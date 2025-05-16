@@ -68,3 +68,5 @@ Tăng giá trị phạt cho các penalty
 phạt khi vùng phát hiện chồng lấn
 
 test reward
+__Ver1.3.1__
+Sửa report

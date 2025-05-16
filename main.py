@@ -19,7 +19,7 @@ args = parser.parse_args()
 
 mode = args.mode
 if mode == 'train':
-    ep_num = 10000
+    ep_num = 1
     np.random.seed(1)
 else:
     ep_num = 1000
@@ -241,6 +241,16 @@ for ep in range(ep_num):
                 ep_timeCost = MAX_EP_STEPS
             timeCostSum_temp += ep_timeCost
             
+            # Cập nhật thông số cho đồ thị
+            if mode == 'train':
+                RL_DQN.update_metrics(
+                    episode_reward=min(ep_reward),
+                    episode_loss=0.0,  # Loss sẽ được cập nhật trong train_main_network
+                    episode_steps=ep_timeCost,
+                    success_rate=1.0 if success else 0.0,
+                    found_targets=np.sum(env.founded_targets)  # Thêm số target tìm thấy
+                )
+            
             # Display per-episode statistics
             exploration_ratio = np.sum(env.grid_map) / (env.ENV_H * env.ENV_H)
             print(f"\nEpisode {episode} | Steps: {ep_timeCost} | Reward: {np.around(min(ep_reward), decimals=3)} | Success: {'Yes' if success else 'No'} | Found Targets: {np.sum(env.founded_targets)}/{env.agentNum} | Explored: {exploration_ratio:.1%} | Agent Collisions: {ep_collision_agent} | Obstacle Collisions: {ep_collision_obs} | Wall Collisions: {ep_collision_wall}")
@@ -284,6 +294,10 @@ if mode == 'train':
     
     RL.save_Parameters()
     np.savetxt(path+'meanReward.txt', meanReward_list)
+    
+    # Vẽ đồ thị các thông số huấn luyện
+    print("\nVẽ đồ thị các thông số huấn luyện...")
+    RL_DQN.plot_training_metrics(save_path=path+'training_metrics.png')
 else:
     print("\n" + "="*100)
     print("Final Evaluation Results")
