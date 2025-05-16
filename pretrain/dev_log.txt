@@ -67,6 +67,10 @@ Thêm Hình Phạt Khi Tốn Nhiều Step
     -> Tạo áp lực hoàn thành sớm cho agents
     Công thức: time_penalty = -0.1 * (self.current_step / MAX_EP_STEPS)
 
+__ver 1.4.2__
+
+Sửa tham số của reward khi va chạm tường và thời gian chạy
+
 sumary:
 Phần thưởng cơ bản cho việc khám phá:
     Nếu phát hiện được vùng mới (exploration_difference > 0):

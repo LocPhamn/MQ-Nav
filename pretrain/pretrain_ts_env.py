@@ -309,14 +309,14 @@ class ENV(tk.Tk, object):
         
         # Apply wall collision penalty (-1.0 for each collision) and overlap penalties
         reward = reward_value * np.ones(self.agentNum)  # All agents get same base reward
-        reward[collision_with_wall == 1] -= 1.0  # Increased penalty for agents that hit walls
+        reward[collision_with_wall == 1] -= 1.2  # Increased penalty for agents that hit walls
         reward -= overlap_penalties  # Apply overlap penalties
         
         # Add constant reward for movement to encourage continuous exploration
         reward += 0.1  # Small constant reward for each step
         
         # Add time-based penalty that scales with MAX_EP_STEPS
-        time_penalty = -0.1 * (self.current_step / MAX_EP_STEPS)
+        time_penalty = -0.2 * (self.current_step / MAX_EP_STEPS)
         reward += time_penalty
         
         # Add progressive reward multipliers based on exploration milestones
