@@ -51,3 +51,6 @@ python main.py --agent_num=3 --mode=train --pretrain_path=./pretrain --save_path
 
 __Ver1.2.6__
 Chỉnh reward để thưởng nhiều hơn khi tìm thấy tất cả target sớm hơn
+
+__Ver1.2.7__
+tinh chỉnh lại reward
