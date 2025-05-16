@@ -57,3 +57,7 @@ tinh chỉnh lại reward
 
 __Ver1.2.8__
 Bỏ multiply khám phá
+
+__Ver1.2.9__
+Thêm lại multiply khám phá
+giá trị này auto max khi tìm thấy 3 target

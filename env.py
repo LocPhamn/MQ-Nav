@@ -529,7 +529,7 @@ class ENV(tk.Tk, object):
 
         # Check success conditions
         found_targets_count = np.sum(self.founded_targets)
-        if found_targets_count >= 3:
+        if found_targets_count >= self.agentNum:
             success = 1
             done = np.ones(self.agentNum)
             remaining_steps = self.MAX_EP_STEPS - self.current_step
@@ -573,14 +573,16 @@ class ENV(tk.Tk, object):
         exploration_ratio = np.sum(self.grid_map) / (ENV_H * ENV_W)
         
         # Apply exploration multipliers
-        # if exploration_ratio >= 0.5 and exploration_ratio < 0.75:
-        #     reward *= 1.2
-        # elif exploration_ratio >= 0.75 and exploration_ratio < 1.0:
-        #     reward *= 1.5
-        # elif exploration_ratio == 1.0:
-        #     reward *= 2.0
-        #     success = 1
-        #     done = np.ones(self.agentNum)
+        if found_targets_count >= self.agentNum:  # When all targets are found
+            reward *= 2.0
+        elif exploration_ratio >= 0.5 and exploration_ratio < 0.75:
+            reward *= 1.2
+        elif exploration_ratio >= 0.75 and exploration_ratio < 1.0:
+            reward *= 1.5
+        elif exploration_ratio == 1.0:
+            reward *= 2.0
+            success = 1
+            done = np.ones(self.agentNum)
 
         # Calculate final positions
         agentNewPosition = agent_centers / UNIT - self.origin / UNIT
