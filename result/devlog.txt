@@ -54,3 +54,6 @@ Chỉnh reward để thưởng nhiều hơn khi tìm thấy tất cả target s�
 
 __Ver1.2.7__
 tinh chỉnh lại reward
+
+__Ver1.2.8__
+Bỏ multiply khám phá

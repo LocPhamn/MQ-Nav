@@ -533,13 +533,23 @@ class ENV(tk.Tk, object):
             success = 1
             done = np.ones(self.agentNum)
             remaining_steps = self.MAX_EP_STEPS - self.current_step
-            bonus_reward = 2000 * remaining_steps  # Direct multiplication with remaining steps
+            # Estimate positive rewards from remaining steps (exploration + target finding)
+            exploration_reward = remaining_steps * 0.1  # Base movement reward per step
+            target_reward = remaining_steps * 200  # Potential target finding reward
+            step_compensation = exploration_reward + target_reward  # Compensate for missed positive rewards
+            additional_bonus = 2000 * remaining_steps  # Additional bonus for early completion
+            bonus_reward = step_compensation + additional_bonus
             reward += bonus_reward
         elif np.sum(agentDone > 0) == self.agentNum:
             success = 1
             done = np.ones(self.agentNum)
             remaining_steps = self.MAX_EP_STEPS - self.current_step
-            bonus_reward = 2000 * remaining_steps  # Direct multiplication with remaining steps
+            # Estimate positive rewards from remaining steps (exploration + target finding)
+            exploration_reward = remaining_steps * 0.1  # Base movement reward per step
+            target_reward = remaining_steps * 200  # Potential target finding reward
+            step_compensation = exploration_reward + target_reward  # Compensate for missed positive rewards
+            additional_bonus = 2000 * remaining_steps  # Additional bonus for early completion
+            bonus_reward = step_compensation + additional_bonus
             reward += bonus_reward
 
         # Calculate rewards
@@ -563,14 +573,14 @@ class ENV(tk.Tk, object):
         exploration_ratio = np.sum(self.grid_map) / (ENV_H * ENV_W)
         
         # Apply exploration multipliers
-        if exploration_ratio >= 0.5 and exploration_ratio < 0.75:
-            reward *= 1.2
-        elif exploration_ratio >= 0.75 and exploration_ratio < 1.0:
-            reward *= 1.5
-        elif exploration_ratio == 1.0:
-            reward *= 2.0
-            success = 1
-            done = np.ones(self.agentNum)
+        # if exploration_ratio >= 0.5 and exploration_ratio < 0.75:
+        #     reward *= 1.2
+        # elif exploration_ratio >= 0.75 and exploration_ratio < 1.0:
+        #     reward *= 1.5
+        # elif exploration_ratio == 1.0:
+        #     reward *= 2.0
+        #     success = 1
+        #     done = np.ones(self.agentNum)
 
         # Calculate final positions
         agentNewPosition = agent_centers / UNIT - self.origin / UNIT
