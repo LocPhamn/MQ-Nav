@@ -89,38 +89,38 @@ class Deep_Q_Algo:
         """
         Vẽ đồ thị các thông số quan trọng trong quá trình huấn luyện
         """
-        plt.figure(figsize=(15, 15))
+        plt.figure(figsize=(20, 20))  # Tăng kích thước figure
         
         # Plot 1: Episode Rewards
         plt.subplot(3, 2, 1)
         plt.plot(self.episode_rewards)
-        plt.title('Episode Rewards')
-        plt.xlabel('Episode')
-        plt.ylabel('Total Reward')
+        plt.title('Episode Rewards', fontsize=14, pad=20)  # Tăng font size và padding
+        plt.xlabel('Episode', fontsize=12)
+        plt.ylabel('Total Reward', fontsize=12)
         plt.grid(True)
         
         # Plot 2: Loss
         plt.subplot(3, 2, 2)
         plt.plot(self.episode_losses)
-        plt.title('Training Loss')
-        plt.xlabel('Episode')
-        plt.ylabel('Loss')
+        plt.title('Training Loss', fontsize=14, pad=20)
+        plt.xlabel('Episode', fontsize=12)
+        plt.ylabel('Loss', fontsize=12)
         plt.grid(True)
         
         # Plot 3: Exploration Rate
         plt.subplot(3, 2, 3)
         plt.plot(self.episode_exploration_rates)
-        plt.title('Exploration Rate (Epsilon)')
-        plt.xlabel('Episode')
-        plt.ylabel('Epsilon')
+        plt.title('Exploration Rate (Epsilon)', fontsize=14, pad=20)
+        plt.xlabel('Episode', fontsize=12)
+        plt.ylabel('Epsilon', fontsize=12)
         plt.grid(True)
         
         # Plot 4: Steps per Episode
         plt.subplot(3, 2, 4)
         plt.plot(self.episode_steps)
-        plt.title('Steps per Episode')
-        plt.xlabel('Episode')
-        plt.ylabel('Steps')
+        plt.title('Steps per Episode', fontsize=14, pad=20)
+        plt.xlabel('Episode', fontsize=12)
+        plt.ylabel('Steps', fontsize=12)
         plt.grid(True)
 
         # Plot 5: Success Rate
@@ -130,9 +130,9 @@ class Deep_Q_Algo:
         success_rates = np.array(self.episode_success_rates)
         rolling_success = np.convolve(success_rates, np.ones(window_size)/window_size, mode='valid')
         plt.plot(rolling_success)
-        plt.title('Success Rate (Rolling Average)')
-        plt.xlabel('Episode')
-        plt.ylabel('Success Rate')
+        plt.title('Success Rate (Rolling Average)', fontsize=14, pad=20)
+        plt.xlabel('Episode', fontsize=12)
+        plt.ylabel('Success Rate', fontsize=12)
         plt.grid(True)
         plt.ylim(0, 1)
 
@@ -142,15 +142,23 @@ class Deep_Q_Algo:
         found_targets = np.array(self.episode_found_targets)
         rolling_targets = np.convolve(found_targets, np.ones(window_size)/window_size, mode='valid')
         plt.plot(rolling_targets)
-        plt.title('Found Targets (Rolling Average)')
-        plt.xlabel('Episode')
-        plt.ylabel('Number of Targets')
+        plt.title('Found Targets (Rolling Average)', fontsize=14, pad=20)
+        plt.xlabel('Episode', fontsize=12)
+        plt.ylabel('Number of Targets', fontsize=12)
         plt.grid(True)
         
-        plt.tight_layout()
+        # Tăng khoảng cách giữa các subplot
+        plt.subplots_adjust(
+            top=0.95,      # Khoảng cách từ top
+            bottom=0.05,   # Khoảng cách từ bottom
+            left=0.1,      # Khoảng cách từ left
+            right=0.9,     # Khoảng cách từ right
+            hspace=0.4,    # Khoảng cách theo chiều dọc giữa các subplot
+            wspace=0.3     # Khoảng cách theo chiều ngang giữa các subplot
+        )
         
         if save_path:
-            plt.savefig(save_path)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')  # Tăng DPI và thêm bbox_inches
         plt.show()
 
     def update_metrics(self, episode_reward, episode_loss, episode_steps, success_rate, found_targets):

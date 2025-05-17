@@ -70,3 +70,7 @@ phạt khi vùng phát hiện chồng lấn
 test reward
 __Ver1.3.1__
 Sửa report
+
+__Ver1.3.2__
+Chỉnh lại report sau train
+Điều chỉnh training lost và exploration epsilon

@@ -181,7 +181,11 @@ for ep in range(ep_num):
 
         # Train DQN with larger batch size
         if mode == 'train' and len(RL_DQN.replay_buffer) > BATCH_SIZE:
-            RL_DQN.train_main_network(batch_size=BATCH_SIZE)
+            loss = RL_DQN.train_main_network(batch_size=BATCH_SIZE)
+            # Update epsilon after training
+            RL_DQN.epsilon = max(RL_DQN.epsilon_min, RL_DQN.epsilon * RL_DQN.epsilon_decay)
+        else:
+            loss = 0.0
 
         agentExistObstacle_Target_old = agentExistObstacle_Target.copy()
         otherTarCoordi = np.zeros((agentNum, 2))
@@ -245,10 +249,10 @@ for ep in range(ep_num):
             if mode == 'train':
                 RL_DQN.update_metrics(
                     episode_reward=min(ep_reward),
-                    episode_loss=0.0,  # Loss sẽ được cập nhật trong train_main_network
+                    episode_loss=loss,  # Use actual loss from training
                     episode_steps=ep_timeCost,
                     success_rate=1.0 if success else 0.0,
-                    found_targets=np.sum(env.founded_targets)  # Thêm số target tìm thấy
+                    found_targets=np.sum(env.founded_targets)
                 )
             
             # Display per-episode statistics
