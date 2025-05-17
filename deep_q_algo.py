@@ -23,7 +23,7 @@ class Deep_Q_Algo:
         self.gamma = 0.99
         self.epsilon = 1.0
         self.epsilon_min = 0.01
-        self.epsilon_decay = 0.98
+        self.epsilon_decay = 0.995  # Giảm chậm hơn để exploration kéo dài hơn
         self.learning_rate = 0.001
         self.update_targetnn_rate = 10
 
@@ -34,6 +34,9 @@ class Deep_Q_Algo:
         self.episode_steps = []
         self.episode_success_rates = []
         self.episode_found_targets = []
+        
+        # Thêm biến để theo dõi loss trong episode
+        self.current_episode_losses = []
 
         # Khởi tạo session và graph
         self.graph = tf.Graph()
@@ -166,8 +169,19 @@ class Deep_Q_Algo:
         Cập nhật các thông số sau mỗi episode
         """
         self.episode_rewards.append(episode_reward)
-        self.episode_losses.append(episode_loss)
+        
+        # Tính loss trung bình của episode
+        if self.current_episode_losses:
+            avg_episode_loss = np.mean(self.current_episode_losses)
+            self.episode_losses.append(avg_episode_loss)
+            self.current_episode_losses = []  # Reset cho episode mới
+        else:
+            self.episode_losses.append(0.0)
+            
+        # Cập nhật epsilon sau mỗi episode
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
         self.episode_exploration_rates.append(self.epsilon)
+        
         self.episode_steps.append(episode_steps)
         self.episode_success_rates.append(success_rate)
         self.episode_found_targets.append(found_targets)
@@ -189,7 +203,12 @@ class Deep_Q_Algo:
 
         # Lưu loss để theo dõi
         history = self.main_network.fit(state_batch, q_values, verbose=0)
-        return history.history['loss'][0]  # Trả về loss của batch hiện tại
+        batch_loss = history.history['loss'][0]
+        
+        # Lưu loss của batch hiện tại
+        self.current_episode_losses.append(batch_loss)
+        
+        return batch_loss  # Trả về loss của batch hiện tại
 
     def make_decision(self, state):
         if random.uniform(0, 1) < self.epsilon:
