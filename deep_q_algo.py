@@ -190,32 +190,36 @@ class Deep_Q_Algo:
         state_batch, action_batch, reward_batch, next_state_batch, terminal_batch = self.get_batch_from_buffer(
             batch_size)
 
-        # Lấy Q value của state hiện tại
-        q_values = self.main_network.predict(state_batch, verbose=0)
+        with self.graph.as_default():
+            tf.compat.v1.keras.backend.set_session(self.sess)
+            # Lấy Q value của state hiện tại
+            q_values = self.main_network.predict(state_batch, verbose=0)
 
-        # Lấy Max Q values của state S' (State chuyển từ S với action A)
-        next_q_values = self.target_network.predict(next_state_batch, verbose=0)
-        max_next_q = np.amax(next_q_values, axis=1)
+            # Lấy Max Q values của state S' (State chuyển từ S với action A)
+            next_q_values = self.target_network.predict(next_state_batch, verbose=0)
+            max_next_q = np.amax(next_q_values, axis=1)
 
-        for i in range(batch_size):
-            new_q_values = reward_batch[i] if terminal_batch[i] else reward_batch[i] + self.gamma * max_next_q[i]
-            q_values[i][action_batch[i]] = new_q_values
+            for i in range(batch_size):
+                new_q_values = reward_batch[i] if terminal_batch[i] else reward_batch[i] + self.gamma * max_next_q[i]
+                q_values[i][action_batch[i]] = new_q_values
 
-        # Lưu loss để theo dõi
-        history = self.main_network.fit(state_batch, q_values, verbose=0)
-        batch_loss = history.history['loss'][0]
-        
-        # Lưu loss của batch hiện tại
-        self.current_episode_losses.append(batch_loss)
-        
-        return batch_loss  # Trả về loss của batch hiện tại
+            # Lưu loss để theo dõi
+            history = self.main_network.fit(state_batch, q_values, verbose=0)
+            batch_loss = history.history['loss'][0]
+            
+            # Lưu loss của batch hiện tại
+            self.current_episode_losses.append(batch_loss)
+            
+            return batch_loss  # Trả về loss của batch hiện tại
 
     def make_decision(self, state):
         if random.uniform(0, 1) < self.epsilon:
             return np.random.randint(self.action_size)
 
         state = state.reshape((1, self.state_size))
-        q_values = self.main_network.predict(state, verbose=0)
+        with self.graph.as_default():
+            tf.compat.v1.keras.backend.set_session(self.sess)
+            q_values = self.main_network.predict(state, verbose=0)
         return np.argmax(q_values[0])
 
 
