@@ -19,7 +19,7 @@ args = parser.parse_args()
 
 mode = args.mode
 if mode == 'train':
-    ep_num = 1
+    ep_num = 2
     np.random.seed(1)
 else:
     ep_num = 1000
@@ -50,7 +50,7 @@ else:
     path = f"{args.load_path}/N{agentNum}/"
 
 RL = HIST_Alg(a_dim, n_actions, s_dim, s_dim_ddpg, s_dim_dqn, a_bound, envSize, model_path_dqn, path, mode)
-RL_DQN = Deep_Q_Algo(s_dim,n_actions)
+RL_DQN = Deep_Q_Algo(2*agentNum, n_actions)
 
 # Initialize arrays
 max_torque = env.max_torque
@@ -144,7 +144,9 @@ for ep in range(ep_num):
         # Calculate actions for each agent
         action_ddpg = np.zeros(agentNum)
         for i in range(agentNum):
-            action_ddpg[i] = RL_DQN.make_decision(observation[i, action[i]*2: action[i]*2+2])
+            # Get the target-related state components (2 dimensions per target)
+            target_state = observation[i, :2*agentNum]
+            action_ddpg[i] = RL_DQN.make_decision(target_state)
             
         move = np.column_stack((
             np.sin(tarAngle + action_ddpg) * env.stepLength,

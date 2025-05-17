@@ -74,3 +74,6 @@ Sửa report
 __Ver1.3.2__
 Chỉnh lại report sau train
 Điều chỉnh training lost và exploration epsilon
+
+__Ver1.3.3__
+Vá lỗi nhỏ
