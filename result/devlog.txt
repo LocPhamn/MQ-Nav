@@ -77,3 +77,6 @@ Chỉnh lại report sau train
 
 __Ver1.3.3__
 Vá lỗi nhỏ
+
+__Ver1.3.4__
+Sửa lỗi ko tính đúng avg target sau 100 ep

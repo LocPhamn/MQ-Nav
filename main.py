@@ -77,7 +77,8 @@ collisionNum_list = []
 success_num = 0
 successNum_list = []
 found_targets_num = 0
-found_targets_list = []  # Add list to store targets found per episode
+found_targets_list = []  # List to store targets found per episode
+total_targets_found = 0  # Track total targets found across all episodes
 
 # Performance optimization
 BATCH_SIZE = 128  # Increased batch size
@@ -168,8 +169,9 @@ for ep in range(ep_num):
         collision_obs_num += collision_obs
         collision_wall_num += collision_wall
         success_num += success
-        found_targets_num += np.sum(env.founded_targets)
-        found_targets_list.append(np.sum(env.founded_targets))  # Store targets found in this episode
+        targets_found = np.sum(env.founded_targets)
+        total_targets_found += targets_found
+        found_targets_list.append(targets_found)  # Store targets found in this episode
         temp_rewardSum += min(ep_reward)
 
         # Update history
@@ -268,8 +270,10 @@ for ep in range(ep_num):
         print(f"Training Statistics - Episode {episode}")
         print("="*100)
         avg_exploration = np.sum(env.grid_map) / (env.ENV_H * env.ENV_H)
-        avg_targets = np.mean(found_targets_list[-100:])  # Calculate average of last 100 episodes
-        print(f"Success Rate: {success_num/100:.2%} | Avg Targets: {avg_targets:.2f} | Avg Exploration: {avg_exploration:.1%} | Avg Agent Collisions: {collision_num/100:.2f} | Avg Obstacle Collisions: {collision_obs_num/100:.2f} | Avg Wall Collisions: {collision_wall_num/100:.2f} | Avg Reward: {temp_rewardSum/100:.2f}", end='')
+        # Calculate average of last 100 episodes for targets found
+        recent_targets = found_targets_list[-100:] if len(found_targets_list) >= 100 else found_targets_list
+        avg_targets = np.mean(recent_targets)
+        print(f"Success Rate: {success_num/100:.2%} | Avg Targets (Last 100): {avg_targets:.2f} | Avg Exploration: {avg_exploration:.1%} | Avg Agent Collisions: {collision_num/100:.2f} | Avg Obstacle Collisions: {collision_obs_num/100:.2f} | Avg Wall Collisions: {collision_wall_num/100:.2f} | Avg Reward: {temp_rewardSum/100:.2f}", end='')
         if success_num >= 3:
             mean_time = timeCostSum_temp / success_num
             print(f" | Avg Steps to Success: {mean_time:.2f}")
@@ -295,7 +299,9 @@ if mode == 'train':
     print("\n" + "="*100)
     print("Final Training Results")
     print("="*100)
-    print(f"Total Episodes: {ep_num} | Success Rate: {success_num/ep_num:.2%} | Avg Targets: {found_targets_num/ep_num:.2f} | Avg Agent Collisions: {collision_num/ep_num:.2f} | Avg Obstacle Collisions: {collision_obs_num/ep_num:.2f} | Avg Wall Collisions: {collision_wall_num/ep_num:.2f} | Avg Steps: {timeCostSum_temp/ep_num:.2f} | Normalized Time: {np.around(timeCostSum_temp/ep_num/MAX_EP_STEPS, decimals=3)}")
+    # Calculate final average using last 100 episodes
+    final_avg_targets = np.mean(found_targets_list[-100:]) if len(found_targets_list) >= 100 else np.mean(found_targets_list)
+    print(f"Total Episodes: {ep_num} | Success Rate: {success_num/ep_num:.2%} | Avg Targets (Last 100): {final_avg_targets:.2f} | Avg Agent Collisions: {collision_num/ep_num:.2f} | Avg Obstacle Collisions: {collision_obs_num/ep_num:.2f} | Avg Wall Collisions: {collision_wall_num/ep_num:.2f} | Avg Steps: {timeCostSum_temp/ep_num:.2f} | Normalized Time: {np.around(timeCostSum_temp/ep_num/MAX_EP_STEPS, decimals=3)}")
     print("="*100 + "\n")
     
     RL.save_Parameters()
