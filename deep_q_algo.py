@@ -23,7 +23,7 @@ class Deep_Q_Algo:
         self.gamma = 0.99
         self.epsilon = 1.0
         self.epsilon_min = 0.01
-        self.epsilon_decay = 0.995  # Giảm chậm hơn để exploration kéo dài hơn
+        self.epsilon_decay = 0.998  # Giảm chậm hơn để exploration kéo dài hơn
         self.learning_rate = 0.001
         self.update_targetnn_rate = 10
 

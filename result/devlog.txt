@@ -80,3 +80,11 @@ Vá lỗi nhỏ
 
 __Ver1.3.4__
 Sửa lỗi ko tính đúng avg target sau 100 ep
+
+__Ver1.3.5__
+Điều chỉnh MAX_EP_STEPS từ envSize*3 thành *4
+Điều chỉnh lại penalty của same position reward và add thêm exploration bonuses khi agent khám phá 25% trở lên
+
+__Ver1.3.6__
+Thêm visit_map lưu lại  sô lượt ô đó agent đã đi qua
+thêm penalty khi vào ô cũ quá 5 lần
