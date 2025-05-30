@@ -19,7 +19,7 @@ args = parser.parse_args()
 
 mode = args.mode
 if mode == 'train':
-    ep_num = 2
+    ep_num = 300
     np.random.seed(1)
 else:
     ep_num = 1000
@@ -31,7 +31,7 @@ agentNum = env.agentNum
 envSize = env.ENV_H
 obsNum = env.obsNum
 detecDirNum = env.n_states_ca
-MAX_EP_STEPS = envSize * 3
+MAX_EP_STEPS = envSize * 4
 envSize_ = envSize - 0.99
 historyStep = env.historyStep
 s_dim_dqn = env.n_states_ts

@@ -10,7 +10,10 @@ ENV_H = 30  # env height
 ENV_W = ENV_H  # env width
 halfUnit = UNIT / 2
 obsNum = 10
-MAX_EP_STEPS = ENV_H * 3  # Maximum steps per episode
+MAX_EP_STEPS = ENV_H * 4  # Maximum steps per episode
+VISIT_REPEAT_THRESHOLD = 10
+LOOP_PENALTY = -0.02
+
 color = ['lightblue', 'pink', 'royalblue', 'pink', 'lightblue', 'lightblue']
 
 class ENV(tk.Tk, object):
@@ -52,6 +55,7 @@ class ENV(tk.Tk, object):
         self.target_rewards_given = np.zeros(agentNum)
         
         # Add exploration bonus tracking
+        self.exploration_25_50_given = False
         self.exploration_50_75_given = False
         self.exploration_75_100_given = False
         self.exploration_100_given = False
@@ -63,7 +67,10 @@ class ENV(tk.Tk, object):
         # Pre-compute detection angles
         self.detection_angles = np.array([(i+1) * np.pi / 6 for i in range(3)])
         self.detection_angles = np.concatenate([self.detection_angles, -self.detection_angles])
-        
+
+        # New parameter
+        self.visit_map = np.zeros((ENV_H, ENV_W), dtype=int)
+        self.loop_penalty = 0.0
         self._build_env()
 
     def _build_env(self):
@@ -134,12 +141,16 @@ class ENV(tk.Tk, object):
     def reset(self, agentPositionArray, tarPositionArray, obsArray, obsSize):
         self.update()
         self.grid_map = np.zeros((ENV_H, ENV_H), dtype=int)
+        self.visit_map = np.zeros((ENV_H, ENV_H), dtype=int)
+        self.loop_penalty = 0.0
+
         self.canvas.delete("squares")
         self.canvas.delete("founded_target")
         self.current_step = 0
         self.target_rewards_given = np.zeros(self.agentNum)
         
         # Reset exploration tracking
+        self.exploration_25_50_given = False
         self.exploration_50_75_given = False
         self.exploration_75_100_given = False
         self.exploration_100_given = False
@@ -300,12 +311,14 @@ class ENV(tk.Tk, object):
         
         # Update grid and count new cells
         for row, col in zip(valid_rows, valid_cols):
+            # Update times agent visit
+            self.visit_map[row, col] += 1
             if grid_matrix[row, col] == 0:
                 new_cells += 1
                 grid_matrix[row, col] = 1
                 self.explored_cells += 1
         
-        return grid_matrix, new_cells
+        return grid_matrix, new_cells, valid_rows, valid_cols
 
     def detect_targets(self, grid_matrix, tar_pos, observe_range, unit):
         tar_row, tar_col = int(tar_pos[1] // unit), int(tar_pos[0] // unit)
@@ -421,7 +434,7 @@ class ENV(tk.Tk, object):
         
         # Check if agents are staying in the same position
         same_position = np.all(agent_centers == self.prev_positions, axis=1)
-        reward[same_position] -= 5
+        reward[same_position] -= 12
         
         # Update previous positions
         self.prev_positions = agent_centers.copy()
@@ -496,7 +509,7 @@ class ENV(tk.Tk, object):
 
             # Update exploration
             agent_center = (int(new_pos[0]), int(new_pos[1]))
-            self.grid_map, new_cells = self.mark_detection_area(self.grid_map, agent_center, self.observeRange, UNIT)
+            self.grid_map, new_cells, valid_rows, valid_cols = self.mark_detection_area(self.grid_map, agent_center, self.observeRange, UNIT)
             remaining_cells = self.total_cells - self.explored_cells
             if remaining_cells > 0:
                 new_cell_reward = (new_cells * 100) / remaining_cells
@@ -504,13 +517,22 @@ class ENV(tk.Tk, object):
                 new_cell_reward = 0
             reward[i] += new_cell_reward  # Add exploration reward directly
 
+            # # Check go into old cell
+            # for row, col in zip(valid_rows, valid_cols):
+            #     if self.visit_map[row, col] > VISIT_REPEAT_THRESHOLD:
+            #         self.loop_penalty += LOOP_PENALTY
+
+            # reward[i] += self.loop_penalty
+
             # Check for overlapping search areas with other agents
             for j in range(self.agentNum):
                 if j != i:
                     other_agent_center = (int(agent_centers[j, 0]), int(agent_centers[j, 1]))
                     distance = np.linalg.norm(np.array(agent_center) - np.array(other_agent_center))
                     if distance < self.observeRange * UNIT * 2:  # If search areas overlap
-                        overlap_penalty = -2.0 * (1 - distance/(self.observeRange * UNIT * 2))  # Fixed penalty calculation
+
+                        # MỤC TIÊU CHO AGENT KHÔNG ĐI CÙNG NHAU KHI AGENT GẦN TƯỜNG
+                        overlap_penalty = -5.0 * (1 - distance/(self.observeRange * UNIT * 2))  # Fixed penalty calculation
                         reward[i] += overlap_penalty
                         reward[j] += overlap_penalty
 
@@ -562,9 +584,12 @@ class ENV(tk.Tk, object):
         
         # Calculate exploration ratio
         exploration_ratio = self.explored_cells / self.total_cells
-        
+
+        # Apply exploration boneses for 25 %
+        if not self.exploration_25_50_given and exploration_ratio >= 0.25 and exploration_ratio < 0.5:
+            reward += 25
         # Apply exploration bonuses
-        if not self.exploration_50_75_given and exploration_ratio >= 0.5 and exploration_ratio < 0.75:
+        elif not self.exploration_50_75_given and exploration_ratio >= 0.5 and exploration_ratio < 0.75:
             reward += 50  # Reduced from 100 to better balance with other rewards
             self.exploration_50_75_given = True
         elif not self.exploration_75_100_given and exploration_ratio >= 0.75 and exploration_ratio < 1.0:
