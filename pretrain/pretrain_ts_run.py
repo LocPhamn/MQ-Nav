@@ -17,6 +17,15 @@ import matplotlib.pyplot as plt
 import argparse
 import os
 
+def adapt_state(state, target_dim):
+    state = np.asarray(state)
+    if state.shape[0] < target_dim:
+        return np.pad(state, (0, target_dim - state.shape[0]), 'constant')
+    elif state.shape[0] > target_dim:
+        return state[:target_dim]
+    else:
+        return state
+
 def run(mode, ep_num, save_path):
     """
     Run training or evaluation of the SMADQN algorithm.
@@ -51,6 +60,8 @@ def run(mode, ep_num, save_path):
     for ep in range(ep_num):
         episode += 1
         observation = env.reset()
+        # Adapt all agent observations to main_n_features
+        observation = np.array([adapt_state(obs, main_n_features) for obs in observation])
         ep_reward = 0  # Track total reward for this episode
         ep_timeCost = 0
 
@@ -63,17 +74,26 @@ def run(mode, ep_num, save_path):
             # Choose actions for all agents
             actions = np.zeros(agentNum, dtype=np.int32)
             for i in range(agentNum):
-                actions[i] = RL.choose_action(observation[i])
+                actions[i] = RL.choose_action(adapt_state(observation[i], main_n_features))
 
             # Execute actions
             observation_, reward, done, exploration_ratio = env.step(actions)
+
+            # Adapt next observations too
+            observation_ = np.array([adapt_state(obs, main_n_features) for obs in observation_])
 
             # Update episode info
             env.show_episode_info(episode, exploration_ratio)
 
             if mode == 'train':  # Store transitions for all agents
                 for i in range(agentNum):
-                    RL.store_transition(observation[i], actions[i], reward[i], observation_[i], done)
+                    RL.store_transition(
+                        adapt_state(observation[i], main_n_features),
+                        actions[i],
+                        reward[i],
+                        adapt_state(observation_[i], main_n_features),
+                        done
+                    )
 
             if mode == 'train':  # Learn
                 if (step_total > 200) and (step_total % 5 == 0):
@@ -213,7 +233,7 @@ if __name__ == "__main__":
     # Set up environment and parameters
     mode = args.mode
     if mode == 'train':
-        ep_num = 5000  # Number of training episodes
+        ep_num = 10  # Number of training episodes
         np.random.seed(1)
     else:
         ep_num = 1000  # Number of evaluation episodes
@@ -227,6 +247,12 @@ if __name__ == "__main__":
     envSize -= 0.99
     historyStep = env.historyStep
     
+    # After parsing args and initializing agentNum, historyStep
+    main_agent_num = agentNum  # Use the same as main
+    main_history_step = historyStep  # Should be 1
+    main_n_actions = main_agent_num
+    main_n_features = 2 * (2 * main_agent_num - 1) + 2 * (main_agent_num - 1) * main_history_step * 2
+    
     # Create save directory
     print(f'N={env.agentNum}')
     save_path = f"{args.save_path}/N{env.agentNum}/"
@@ -235,7 +261,7 @@ if __name__ == "__main__":
     save_path = save_path
     
     # Initialize SMADQN agent
-    RL = SMADQN(env.n_actions, env.n_features, args.mode,
+    RL = SMADQN(main_n_actions, main_n_features, args.mode,
                 learning_rate=0.01,
                 reward_decay=0.9,
                 replace_target_iter=300,
