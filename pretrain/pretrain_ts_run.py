@@ -233,7 +233,7 @@ if __name__ == "__main__":
     # Set up environment and parameters
     mode = args.mode
     if mode == 'train':
-        ep_num = 10  # Number of training episodes
+        ep_num = 10000  # Number of training episodes
         np.random.seed(1)
     else:
         ep_num = 1000  # Number of evaluation episodes

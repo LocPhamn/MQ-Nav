@@ -19,7 +19,7 @@ args = parser.parse_args()
 
 mode = args.mode
 if mode == 'train':
-    ep_num = 300
+    ep_num = 5000
     np.random.seed(1)
 else:
     ep_num = 1000
@@ -35,8 +35,8 @@ MAX_EP_STEPS = envSize * 4
 envSize_ = envSize - 0.99
 historyStep = env.historyStep
 s_dim_dqn = env.n_states_ts
-s_dim_ddpg = env.n_states_ca + 2   
-s_dim = s_dim_dqn + env.n_states_ca  
+s_dim_ddpg = env.n_states_ca + 2
+s_dim = s_dim_dqn + env.n_states_ca
 n_actions = env.n_actions_ts
 a_dim = env.n_actions_ca
 a_bound = env.max_torque
@@ -50,7 +50,7 @@ else:
     path = f"{args.load_path}/N{agentNum}/"
 
 RL = HIST_Alg(a_dim, n_actions, s_dim, s_dim_ddpg, s_dim_dqn, a_bound, envSize, model_path_dqn, path, mode)
-RL_DQN = Deep_Q_Algo(2*agentNum, n_actions)
+RL_DQN = Deep_Q_Algo(2 * agentNum, n_actions)
 
 # Initialize arrays
 max_torque = env.max_torque
@@ -92,15 +92,17 @@ for ep in range(ep_num):
     for i in range(obsNum):
         obstacleArray[i] = [locationArea[i] // 5 * 5 + 2.5, locationArea[i] % 5 * 5 + 2.5] + 1 * np.random.rand(2)
     for i in range(agentNum):
-        tarPositionArray0[i] = [locationArea[obsNum + i] // 5 * 5 + 2, locationArea[obsNum + i] % 5 * 5 + 2] + 2 * np.random.rand(2)
-        agentPositionArray0[i] = [locationArea[obsNum + agentNum + i] // 5 * 5 + 2, locationArea[obsNum + agentNum + i] % 5 * 5 + 2] + 2 * np.random.rand(2)
-    
+        tarPositionArray0[i] = [locationArea[obsNum + i] // 5 * 5 + 2,
+                                locationArea[obsNum + i] % 5 * 5 + 2] + 2 * np.random.rand(2)
+        agentPositionArray0[i] = [locationArea[obsNum + agentNum + i] // 5 * 5 + 2,
+                                  locationArea[obsNum + agentNum + i] % 5 * 5 + 2] + 2 * np.random.rand(2)
+
     # Vectorized sorting
     sortTar_index = np.argsort(tarPositionArray0[:, 0])
     tarPositionArray = tarPositionArray0[sortTar_index]
     sortAgent_index = np.argsort(agentPositionArray0[:, 0])
     agentPositionArray = agentPositionArray0[sortAgent_index]
-    
+
     obstacleSize = np.random.rand(obsNum) * 1.3 + 0.5
 
     observation = env.reset(agentPositionArray, tarPositionArray, obstacleArray, obstacleSize)
@@ -119,7 +121,7 @@ for ep in range(ep_num):
     observation_h = np.tile(observation[:, -(agentNum - 1) * 2:], historyStep)
     observation_h_temp = observation_h
     collision_cross = np.zeros(agentNum)
-    
+
     # Reset episode statistics
     ep_collision_agent = 0
     ep_collision_obs = 0
@@ -129,26 +131,26 @@ for ep in range(ep_num):
         # Render only if enabled and at specified interval
         if args.render and step % RENDER_INTERVAL == 0:
             env.render()
-            
+
         # Vectorized action selection
         otherTarCoordi = np.zeros((agentNum, 2))
         action_ddpg = np.zeros(agentNum)
-        
+
         # Batch process observations
         observationCA = np.zeros((agentNum, 9))  # 2 for target coords + 7 for obstacle distances
         for i in range(agentNum):
             observationCA[i] = np.hstack((
-                observation[i, action[i]*2: action[i]*2+2],
+                observation[i, action[i] * 2: action[i] * 2 + 2],
                 agentObstacleDis[i]
             ))
-        
+
         # Calculate actions for each agent
         action_ddpg = np.zeros(agentNum)
         for i in range(agentNum):
             # Get the target-related state components (2 dimensions per target)
-            target_state = observation[i, :2*agentNum]
+            target_state = observation[i, :2 * agentNum]
             action_ddpg[i] = RL_DQN.make_decision(target_state)
-            
+
         move = np.column_stack((
             np.sin(tarAngle + action_ddpg) * env.stepLength,
             -np.cos(tarAngle + action_ddpg) * env.stepLength
@@ -198,31 +200,31 @@ for ep in range(ep_num):
         for i in range(agentNum):
             if collision_cross[i] != 1:
                 action_[i] = RL.choose_action_dqn(np.hstack((
-                    observation_[i], 
-                    observation_h_temp[i], 
-                    observation_[i, -2*(agentNum-1):]
+                    observation_[i],
+                    observation_h_temp[i],
+                    observation_[i, -2 * (agentNum - 1):]
                 )))
             else:
                 action_[i] = action[i]
-                
+
             # Vectorized target detection
             tarAgentCoordi = (observation_[i, 2 * action_[i]: 2 * action_[i] + 2]) * envSize
             tarAgentDis = np.linalg.norm(tarAgentCoordi)
-            
+
             if tarAgentDis >= 1:
                 # Calculate distances to other targets
                 other_targets = np.zeros((agentNum, 2))
                 for j in range(agentNum):
-                    other_targets[j] = observation_[i, 2*j:2*j+2] * envSize
-                
+                    other_targets[j] = observation_[i, 2 * j:2 * j + 2] * envSize
+
                 other_distances = np.linalg.norm(other_targets, axis=1)
                 valid_targets = (other_distances > 1) & (other_distances < 2.5)
                 if np.any(valid_targets):
                     otherTarCoordi[i] = -other_targets[np.where(valid_targets)[0][0]]
-                
+
                 tarAgentDirCoordi = tarAgentCoordi / tarAgentDis
                 agentNextDDPG, agentObstacleDis[i, 0] = env.detect_obstacle(tarAgentDirCoordi, i, otherTarCoordi[i])
-                
+
                 if agentNextDDPG == 1:
                     tarAngle[i] = math.asin(tarAgentCoordi[0] / tarAgentDis)
                     if tarAgentCoordi[1] >= 0:
@@ -230,17 +232,18 @@ for ep in range(ep_num):
                             tarAngle[i] = np.pi - tarAngle[i]
                         if tarAgentCoordi[0] < 0:
                             tarAngle[i] = -np.pi - tarAngle[i]
-                            
+
                     # Vectorized angle calculations
-                    angles = np.array([tarAngle[i] + (j+1) * np.pi / 6 for j in range(3)])
-                    negative_angles = np.array([tarAngle[i] - (j+1) * np.pi / 6 for j in range(3)])
+                    angles = np.array([tarAngle[i] + (j + 1) * np.pi / 6 for j in range(3)])
+                    negative_angles = np.array([tarAngle[i] - (j + 1) * np.pi / 6 for j in range(3)])
                     angles = np.concatenate([angles, negative_angles])
                     polar_coords = np.column_stack((np.sin(angles), -np.cos(angles)))
-                    
+
                     for j, coord in enumerate(polar_coords):
                         _, agentObstacleDis[i, j + 1] = env.detect_obstacle(coord, i, otherTarCoordi[i])
 
-            observation_All = np.hstack((observation_[i], observation_h_temp[i], observation_[i, -2*(agentNum-1):], agentObstacleDis[i]))
+            observation_All = np.hstack(
+                (observation_[i], observation_h_temp[i], observation_[i, -2 * (agentNum - 1):], agentObstacleDis[i]))
             if mode == 'train' and agentExistObstacle_Target[i] == 1:
                 RL_DQN.save_experience(observationCA[i], action_ddpg[i], reward[i], observation_All, done[i])
 
@@ -248,7 +251,7 @@ for ep in range(ep_num):
             if success == 0:
                 ep_timeCost = MAX_EP_STEPS
             timeCostSum_temp += ep_timeCost
-            
+
             # Cập nhật thông số cho đồ thị
             if mode == 'train':
                 RL_DQN.update_metrics(
@@ -258,29 +261,32 @@ for ep in range(ep_num):
                     success_rate=1.0 if success else 0.0,
                     found_targets=np.sum(env.founded_targets)
                 )
-            
+
             # Display per-episode statistics
             exploration_ratio = np.sum(env.grid_map) / (env.ENV_H * env.ENV_H)
-            print(f"\nEpisode {episode} | Steps: {ep_timeCost} | Reward: {np.around(min(ep_reward), decimals=3)} | Success: {'Yes' if success else 'No'} | Found Targets: {np.sum(env.founded_targets)}/{env.agentNum} | Explored: {exploration_ratio:.1%} | Agent Collisions: {ep_collision_agent} | Obstacle Collisions: {ep_collision_obs} | Wall Collisions: {ep_collision_wall}")
+            print(
+                f"\nEpisode {episode} | Steps: {ep_timeCost} | Reward: {np.around(min(ep_reward), decimals=3)} | Success: {'Yes' if success else 'No'} | Found Targets: {np.sum(env.founded_targets)}/{env.agentNum} | Explored: {exploration_ratio:.1%} | Agent Collisions: {ep_collision_agent} | Obstacle Collisions: {ep_collision_obs} | Wall Collisions: {ep_collision_wall}")
             break
 
     # Display statistics every 100 episodes during training
     if mode == 'train' and episode % 100 == 0:
-        print("\n" + "="*100)
+        print("\n" + "=" * 100)
         print(f"Training Statistics - Episode {episode}")
-        print("="*100)
+        print("=" * 100)
         avg_exploration = np.sum(env.grid_map) / (env.ENV_H * env.ENV_H)
         # Calculate average of last 100 episodes for targets found
         recent_targets = found_targets_list[-100:] if len(found_targets_list) >= 100 else found_targets_list
         avg_targets = np.mean(recent_targets)
-        print(f"Success Rate: {success_num/100:.2%} | Avg Targets (Last 100): {avg_targets:.2f} | Avg Exploration: {avg_exploration:.1%} | Avg Agent Collisions: {collision_num/100:.2f} | Avg Obstacle Collisions: {collision_obs_num/100:.2f} | Avg Wall Collisions: {collision_wall_num/100:.2f} | Avg Reward: {temp_rewardSum/100:.2f}", end='')
+        print(
+            f"Success Rate: {success_num / 100:.2%} | Avg Targets (Last 100): {avg_targets:.2f} | Avg Exploration: {avg_exploration:.1%} | Avg Agent Collisions: {collision_num / 100:.2f} | Avg Obstacle Collisions: {collision_obs_num / 100:.2f} | Avg Wall Collisions: {collision_wall_num / 100:.2f} | Avg Reward: {temp_rewardSum / 100:.2f}",
+            end='')
         if success_num >= 3:
             mean_time = timeCostSum_temp / success_num
             print(f" | Avg Steps to Success: {mean_time:.2f}")
         else:
             print()
-        print("="*100 + "\n")
-        
+        print("=" * 100 + "\n")
+
         # Reset statistics for next 100 episodes
         meanReward_list.append(temp_rewardSum / 100)
         if success_num >= 3:
@@ -296,25 +302,28 @@ for ep in range(ep_num):
 
 # Display final statistics
 if mode == 'train':
-    print("\n" + "="*100)
+    print("\n" + "=" * 100)
     print("Final Training Results")
-    print("="*100)
+    print("=" * 100)
     # Calculate final average using last 100 episodes
-    final_avg_targets = np.mean(found_targets_list[-100:]) if len(found_targets_list) >= 100 else np.mean(found_targets_list)
-    print(f"Total Episodes: {ep_num} | Success Rate: {success_num/ep_num:.2%} | Avg Targets : {final_avg_targets:.2f} | Avg Agent Collisions: {collision_num/ep_num:.2f} | Avg Obstacle Collisions: {collision_obs_num/ep_num:.2f} | Avg Wall Collisions: {collision_wall_num/ep_num:.2f} | Avg Steps: {timeCostSum_temp/ep_num:.2f} | Normalized Time: {np.around(timeCostSum_temp/ep_num/MAX_EP_STEPS, decimals=3)}")
-    print("="*100 + "\n")
-    
+    final_avg_targets = np.mean(found_targets_list[-100:]) if len(found_targets_list) >= 100 else np.mean(
+        found_targets_list)
+    print(
+        f"Total Episodes: {ep_num} | Success Rate: {success_num / ep_num:.2%} | Avg Targets : {final_avg_targets:.2f} | Avg Agent Collisions: {collision_num / ep_num:.2f} | Avg Obstacle Collisions: {collision_obs_num / ep_num:.2f} | Avg Wall Collisions: {collision_wall_num / ep_num:.2f} | Avg Steps: {timeCostSum_temp / ep_num:.2f} | Normalized Time: {np.around(timeCostSum_temp / ep_num / MAX_EP_STEPS, decimals=3)}")
+    print("=" * 100 + "\n")
+
     RL.save_Parameters()
-    np.savetxt(path+'meanReward.txt', meanReward_list)
-    
+    np.savetxt(path + 'meanReward.txt', meanReward_list)
+
     # Vẽ đồ thị các thông số huấn luyện
     print("\nVẽ đồ thị các thông số huấn luyện...")
-    RL_DQN.plot_training_metrics(save_path=path+'training_metrics.png')
+    RL_DQN.plot_training_metrics(save_path=path + 'training_metrics.png')
 else:
-    print("\n" + "="*100)
+    print("\n" + "=" * 100)
     print("Final Evaluation Results")
-    print("="*100)
-    print(f"Total Episodes: {ep_num} | Success Rate: {success_num/ep_num:.2%} | Avg Targets: {found_targets_num/ep_num:.2f} | Avg Agent Collisions: {collision_num/ep_num:.2f} | Avg Obstacle Collisions: {collision_obs_num/ep_num:.2f} | Avg Wall Collisions: {collision_wall_num/ep_num:.2f} | Avg Steps: {timeCostSum_temp/ep_num:.2f} | Normalized Time: {np.around(timeCostSum_temp/ep_num/MAX_EP_STEPS, decimals=3)}")
-    print("="*100 + "\n")
+    print("=" * 100)
+    print(
+        f"Total Episodes: {ep_num} | Success Rate: {success_num / ep_num:.2%} | Avg Targets: {found_targets_num / ep_num:.2f} | Avg Agent Collisions: {collision_num / ep_num:.2f} | Avg Obstacle Collisions: {collision_obs_num / ep_num:.2f} | Avg Wall Collisions: {collision_wall_num / ep_num:.2f} | Avg Steps: {timeCostSum_temp / ep_num:.2f} | Normalized Time: {np.around(timeCostSum_temp / ep_num / MAX_EP_STEPS, decimals=3)}")
+    print("=" * 100 + "\n")
 
 print(f"Finished! Running time: {time.time() - timeStart}")
